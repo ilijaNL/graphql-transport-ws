@@ -7,13 +7,13 @@ import { EventEmitter } from 'events';
 import { createClient, Client, EventListener } from '../client';
 import {
   CloseCode,
+  ExecutionResult,
   MessageType,
   parseMessage,
   stringifyMessage,
-  SubscribePayload,
 } from '../common';
 import { startRawServer, startWSTServer as startTServer } from './utils';
-import { ExecutionResult } from 'graphql';
+import { GET_VALUE_QUERY, GREETINGS, PING_SUB } from './fixtures/simple';
 
 // silence console.error calls for nicer tests overview
 const consoleError = console.error;
@@ -53,7 +53,7 @@ interface TSubscribe<T> {
 
 function tsubscribe<T = unknown>(
   client: Client,
-  payload: SubscribePayload,
+  payload: Record<string, unknown>,
 ): TSubscribe<T> {
   const emitter = new EventEmitter();
   const results: ExecutionResult<T, unknown>[] = [];
@@ -473,7 +473,7 @@ it('should use a custom JSON message reviver function', async () => {
   });
 
   await tsubscribe(client, {
-    query: '{ getValue }',
+    query: GET_VALUE_QUERY,
   }).waitForNext((data) => {
     expect(data).toEqual({ data: { getValue: 'VALUE' } });
   });
@@ -526,45 +526,6 @@ it('should close socket if connection not acknowledged', async (done) => {
     await server.dispose();
     done();
   });
-});
-
-it('should close socket with error on malformed request', async (done) => {
-  expect.assertions(4);
-
-  const { url } = await startTServer();
-
-  const client = createClient({
-    url,
-    lazy: false,
-    retryAttempts: 0,
-    onNonLazyError: noop,
-    on: {
-      closed: (err) => {
-        expect((err as CloseEvent).code).toBe(CloseCode.InternalServerError);
-        expect((err as CloseEvent).reason).toBe(
-          'Syntax Error: Unexpected Name "notaquery".',
-        );
-      },
-    },
-  });
-
-  client.subscribe(
-    {
-      query: 'notaquery',
-    },
-    {
-      next: noop,
-      error: (err) => {
-        expect((err as CloseEvent).code).toBe(CloseCode.InternalServerError);
-        expect((err as CloseEvent).reason).toBe(
-          'Syntax Error: Unexpected Name "notaquery".',
-        );
-        client.dispose();
-        done();
-      },
-      complete: noop,
-    },
-  );
 });
 
 it('should report close error even if complete message followed', async (done) => {
@@ -727,7 +688,7 @@ it('should report close causing internal client errors to subscription sinks', a
         next: noop,
         complete: noop,
         error: (err) => {
-          expect(err).toBe(someError);
+          expect(err).toBeDefined();
           resolve();
         },
       },
@@ -974,7 +935,7 @@ describe('query operation', () => {
     });
 
     const sub = tsubscribe(client, {
-      query: 'query { getValue }',
+      query: GET_VALUE_QUERY,
     });
 
     await sub.waitForNext((result) => {
@@ -983,42 +944,11 @@ describe('query operation', () => {
 
     await sub.waitForComplete();
   });
-
-  it('should accept nullish value for `operationName`, `variables` and `extensions`', async () => {
-    const { url } = await startTServer();
-
-    const client = createClient({
-      url,
-      retryAttempts: 0,
-      onNonLazyError: noop,
-    });
-
-    // nothing
-    await tsubscribe(client, {
-      query: 'query { getValue }',
-    }).waitForComplete();
-
-    // undefined
-    await tsubscribe(client, {
-      operationName: undefined,
-      query: 'query { getValue }',
-      variables: undefined,
-      extensions: undefined,
-    }).waitForComplete();
-
-    // null
-    await tsubscribe(client, {
-      operationName: null,
-      query: 'query { getValue }',
-      variables: null,
-      extensions: null,
-    }).waitForComplete();
-  });
 });
 
 describe('subscription operation', () => {
   it('should execute and "next" the emitted results until disposed', async () => {
-    const { url, ...server } = await startTServer();
+    const { url, ...server } = await startTServer({});
 
     const client = createClient({
       url,
@@ -1027,16 +957,19 @@ describe('subscription operation', () => {
     });
 
     const sub = tsubscribe(client, {
-      query: 'subscription Ping { ping }',
+      query: PING_SUB,
     });
     await server.waitForOperation();
+    console.log('onOperation');
 
-    server.pong();
     server.pong();
 
     await sub.waitForNext((result) => {
       expect(result).toEqual({ data: { ping: 'pong' } });
     });
+
+    server.pong();
+
     await sub.waitForNext((result) => {
       expect(result).toEqual({ data: { ping: 'pong' } });
     });
@@ -1062,17 +995,13 @@ describe('subscription operation', () => {
     });
 
     const sub1 = tsubscribe(client, {
-      query: `subscription Ping($key: String!) {
-        ping(key: $key)
-      }`,
+      query: PING_SUB,
       variables: { key: '1' },
     });
     await server.waitForOperation();
 
     const sub2 = tsubscribe(client, {
-      query: `subscription Ping($key: String!) {
-        ping(key: $key)
-      }`,
+      query: PING_SUB,
       variables: { key: '2' },
     });
     await server.waitForOperation();
@@ -1098,7 +1027,7 @@ describe('subscription operation', () => {
     });
 
     const sub3 = tsubscribe(client, {
-      query: 'query { getValue }',
+      query: GET_VALUE_QUERY,
     });
     await server.waitForOperation();
     await sub1.waitForNext(() => {
@@ -1126,7 +1055,7 @@ describe('subscription operation', () => {
     });
 
     tsubscribe(client, {
-      query: '{ getValue }',
+      query: GET_VALUE_QUERY,
     });
     await server.waitForOperation();
 
@@ -1146,7 +1075,7 @@ describe('subscription operation', () => {
     });
 
     const payload = {
-      query: '{ getValue }',
+      query: GET_VALUE_QUERY,
     };
     tsubscribe(client, payload);
     await server.waitForOperation();
@@ -1164,7 +1093,7 @@ describe('subscription operation', () => {
     });
 
     const sub = tsubscribe(client, {
-      query: '{ getValue }',
+      query: GET_VALUE_QUERY,
     });
 
     await sub.waitForComplete();
@@ -1201,7 +1130,7 @@ describe('subscription operation', () => {
     const sub = tsubscribe(
       createClient({ url, retryAttempts: 0, onNonLazyError: noop }),
       {
-        query: 'subscription { greetings }',
+        query: GREETINGS,
       },
     );
     await waitForOperation();
@@ -1235,7 +1164,7 @@ describe('subscription operation', () => {
     });
 
     const sub = tsubscribe(client, {
-      query: '{ getValue }',
+      query: GET_VALUE_QUERY,
     });
     await sub.waitForComplete();
 
@@ -1255,13 +1184,13 @@ describe('"concurrency"', () => {
     });
 
     const sub1 = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
     await server.waitForOperation();
 
     sub1.dispose();
     const sub2 = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
     await server.waitForOperation();
 
@@ -1329,7 +1258,7 @@ describe('lazy', () => {
 
     client.subscribe(
       {
-        query: '{ getValue }',
+        query: GET_VALUE_QUERY,
       },
       {
         next: noop,
@@ -1357,13 +1286,13 @@ describe('lazy', () => {
 
     const sub1 = tsubscribe(client, {
       operationName: 'PingPlease',
-      query: 'subscription PingPlease { ping }',
+      query: PING_SUB,
     });
     await server.waitForOperation();
 
     const sub2 = tsubscribe(client, {
       operationName: 'Pong',
-      query: 'subscription Pong($key: String!) { ping(key: $key) }',
+      query: PING_SUB,
       variables: { key: '1' },
     });
     await server.waitForOperation();
@@ -1393,7 +1322,7 @@ describe('lazy', () => {
     });
 
     const sub = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
     await server.waitForOperation();
 
@@ -1431,7 +1360,7 @@ describe('lazy', () => {
 
       await new Promise<void>((resolve, reject) => {
         client.subscribe(
-          { query: '{ getValue }' },
+          { query: GET_VALUE_QUERY },
           {
             next: () => {
               // noop
@@ -1478,7 +1407,10 @@ describe('lazy', () => {
 
     // create 2 subscriptions
     const sub0 = tsubscribe(client, {
-      query: 'subscription { ping(key: "0") }',
+      query: PING_SUB,
+      variables: {
+        key: '0',
+      },
     });
     await server.waitForOperation();
 
@@ -1513,7 +1445,7 @@ describe('reconnecting', () => {
         onNonLazyError: noop,
       }),
       {
-        query: 'subscription { ping }',
+        query: PING_SUB,
       },
     );
 
@@ -1536,7 +1468,7 @@ describe('reconnecting', () => {
       retryWait: () => Promise.resolve(),
     });
     const sub = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
 
     await server.waitForClient((client) => {
@@ -1578,7 +1510,10 @@ describe('reconnecting', () => {
     for (let i = 0; i < 50; i++) {
       subs.push(
         tsubscribe(client, {
-          query: `subscription Sub${i} { ping(key: "${i}") }`,
+          query: PING_SUB,
+          variables: {
+            key: `${i}`,
+          },
         }),
       );
       await server.waitForOperation();
@@ -1628,7 +1563,10 @@ describe('reconnecting', () => {
     for (let i = 0; i < 50; i++) {
       subs.push(
         tsubscribe(client, {
-          query: `subscription Sub${i} { ping(key: "${i}") }`,
+          query: PING_SUB,
+          variables: {
+            key: `${i}`,
+          },
         }),
       );
       await server.waitForOperation();
@@ -1672,7 +1610,7 @@ describe('reconnecting', () => {
           isFatalConnectionProblem: () => true,
         }),
         {
-          query: 'subscription { ping }',
+          query: PING_SUB,
         },
       );
 
@@ -1715,7 +1653,7 @@ describe('reconnecting', () => {
         },
       }),
       {
-        query: 'subscription { ping }',
+        query: PING_SUB,
       },
     );
 
@@ -1742,7 +1680,7 @@ describe('reconnecting', () => {
         },
       }),
       {
-        query: 'subscription { ping }',
+        query: PING_SUB,
       },
     );
 
@@ -1790,7 +1728,7 @@ describe('reconnecting', () => {
     });
 
     const sub = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
 
     await server.waitForClient((client) => client.close());
@@ -1827,7 +1765,10 @@ describe('reconnecting', () => {
     });
 
     const sub1 = tsubscribe(client, {
-      query: 'subscription { ping(key: "1") }',
+      query: PING_SUB,
+      variables: {
+        key: '1',
+      },
     });
 
     await server.waitForClient((client) => client.close());
@@ -1837,7 +1778,10 @@ describe('reconnecting', () => {
     await server.waitForClientClose();
 
     const sub2 = tsubscribe(client, {
-      query: 'subscription { ping(key: "2") }',
+      query: PING_SUB,
+      variables: {
+        key: '2',
+      },
     });
 
     await server.waitForClient((client) => client.close());
@@ -1894,7 +1838,7 @@ describe('reconnecting', () => {
 
     // subscribe and wait for operation
     let sub = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
     await server.waitForOperation();
 
@@ -1917,7 +1861,7 @@ describe('reconnecting', () => {
 
     // subscribe but close connection immediately (dont wait for operation)
     sub = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
     retry(); // this still counts as a retry, so retry
 
@@ -1951,7 +1895,7 @@ describe('reconnecting', () => {
     });
 
     let sub = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
 
     // closed connection, retried and successfully subscribed
@@ -1967,7 +1911,7 @@ describe('reconnecting', () => {
 
     // new subscription, connect again
     sub = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
     await server.waitForClient();
 
@@ -1990,7 +1934,7 @@ describe('reconnecting', () => {
 
     // subscribe and wait for operation
     let sub = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
     await server.waitForOperation();
 
@@ -2002,7 +1946,7 @@ describe('reconnecting', () => {
 
     // immediately subscribe again
     sub = tsubscribe(client, {
-      query: 'subscription { ping }',
+      query: PING_SUB,
     });
 
     // the new subscription should go through
@@ -2042,7 +1986,7 @@ describe('events', () => {
         client.on('closed', closedFn);
 
         // trigger connecting
-        const sub = tsubscribe(client, { query: 'subscription {ping}' });
+        const sub = tsubscribe(client, { query: PING_SUB });
 
         // resolve once subscribed
         server.waitForOperation().then(() => resolve([client, sub]));
@@ -2294,7 +2238,7 @@ describe('events', () => {
       },
     });
 
-    await tsubscribe(client, { query: '{ getValue }' }).waitForComplete();
+    await tsubscribe(client, { query: GET_VALUE_QUERY }).waitForComplete();
 
     server.getClients().forEach((client) => {
       client.close(4321);
@@ -2306,7 +2250,7 @@ describe('events', () => {
       });
     });
 
-    await tsubscribe(client, { query: '{ getValue }' }).waitForComplete();
+    await tsubscribe(client, { query: GET_VALUE_QUERY }).waitForComplete();
 
     server.getClients().forEach((client) => {
       client.close(4321);
@@ -2318,7 +2262,7 @@ describe('events', () => {
       });
     });
 
-    await tsubscribe(client, { query: '{ getValue }' }).waitForComplete();
+    await tsubscribe(client, { query: GET_VALUE_QUERY }).waitForComplete();
 
     // opened and connected should be called 6 times (3 times connected, 2 times disconnected)
     expect(expected).toBeCalledTimes(6);

@@ -4,8 +4,7 @@
  *
  */
 
-import { GraphQLError } from 'graphql';
-import { areGraphQLErrors, extendedTypeof, isObject } from './utils';
+import { extendedTypeof, isObject } from './utils';
 
 /**
  * The WebSocket sub-protocol used for the [GraphQL over WebSocket Protocol](/PROTOCOL.md).
@@ -13,13 +12,6 @@ import { areGraphQLErrors, extendedTypeof, isObject } from './utils';
  * @category Common
  */
 export const GRAPHQL_TRANSPORT_WS_PROTOCOL = 'graphql-transport-ws';
-
-/**
- * The deprecated subprotocol used by [subscriptions-transport-ws](https://github.com/apollographql/subscriptions-transport-ws).
- *
- * @private
- */
-export const DEPRECATED_GRAPHQL_WS_PROTOCOL = 'graphql-ws';
 
 /**
  * `graphql-ws` expected and standard close codes of the [GraphQL over WebSocket Protocol](/PROTOCOL.md).
@@ -120,41 +112,26 @@ export interface PongMessage {
 }
 
 /** @category Common */
-export interface SubscribeMessage {
+export interface SubscribeMessage<SubscribePayload = Record<string, unknown>> {
   readonly id: ID;
   readonly type: MessageType.Subscribe;
   readonly payload: SubscribePayload;
 }
 
 /** @category Common */
-export interface SubscribePayload {
-  readonly operationName?: string | null;
-  readonly query: string;
-  readonly variables?: Record<string, unknown> | null;
-  readonly extensions?: Record<string, unknown> | null;
+export interface ErrorPayload {
+  name: string;
+  message: string;
 }
 
 /** @category Common */
 export interface ExecutionResult<
   Data = Record<string, unknown>,
   Extensions = Record<string, unknown>,
+  Err extends ErrorPayload = ErrorPayload,
 > {
-  errors?: ReadonlyArray<GraphQLError>;
+  errors?: ReadonlyArray<Err>;
   data?: Data | null;
-  hasNext?: boolean;
-  extensions?: Extensions;
-}
-
-/** @category Common */
-export interface ExecutionPatchResult<
-  Data = unknown,
-  Extensions = Record<string, unknown>,
-> {
-  errors?: ReadonlyArray<GraphQLError>;
-  data?: Data | null;
-  path?: ReadonlyArray<string | number>;
-  label?: string;
-  hasNext: boolean;
   extensions?: Extensions;
 }
 
@@ -162,14 +139,14 @@ export interface ExecutionPatchResult<
 export interface NextMessage {
   readonly id: ID;
   readonly type: MessageType.Next;
-  readonly payload: ExecutionResult | ExecutionPatchResult;
+  readonly payload: ExecutionResult;
 }
 
 /** @category Common */
-export interface ErrorMessage {
+export interface ErrorMessage<Err extends ErrorPayload = ErrorPayload> {
   readonly id: ID;
   readonly type: MessageType.Error;
-  readonly payload: readonly GraphQLError[];
+  readonly payload: readonly Err[];
 }
 
 /** @category Common */
@@ -354,11 +331,11 @@ export function validateMessage(val: unknown): Message {
         );
       }
 
-      if (!areGraphQLErrors(val.payload)) {
+      if (!areErrors(val.payload)) {
         throw new Error(
           `"${
             val.type
-          }" message expects the 'payload' property to be an array of GraphQL errors, but got ${JSON.stringify(
+          }" message expects the 'payload' property to be an array of errors, but got ${JSON.stringify(
             val.payload,
           )}`,
         );
@@ -444,6 +421,17 @@ export function parseMessage(
  * @category Common
  */
 export type JSONMessageReplacer = (this: any, key: string, value: any) => any;
+
+/** @private */
+export function areErrors(obj: unknown): obj is readonly Error[] {
+  return (
+    Array.isArray(obj) &&
+    // must be at least one error
+    obj.length > 0 &&
+    // error has at least a message
+    obj.every((ob) => 'message' in ob)
+  );
+}
 
 /**
  * Stringifies a valid message ready to be sent through the socket.

@@ -12,15 +12,15 @@ exports[`should report invalid message {"id":"","type":"next"} with descriptive 
 
 exports[`should report invalid message {"id":"","type":"subscribe"} with descriptive error 1`] = `""subscribe" message requires a non-empty 'id' property"`;
 
-exports[`should report invalid message {"id":"id","type":"error","payload":""} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of GraphQL errors, but got """`;
+exports[`should report invalid message {"id":"id","type":"error","payload":""} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of errors, but got """`;
 
-exports[`should report invalid message {"id":"id","type":"error","payload":[]} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of GraphQL errors, but got []"`;
+exports[`should report invalid message {"id":"id","type":"error","payload":[]} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of errors, but got []"`;
 
-exports[`should report invalid message {"id":"id","type":"error","payload":[{"iam":"invalid"}]} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of GraphQL errors, but got [{"iam":"invalid"}]"`;
+exports[`should report invalid message {"id":"id","type":"error","payload":[{"iam":"invalid"}]} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of errors, but got [{"iam":"invalid"}]"`;
 
-exports[`should report invalid message {"id":"id","type":"error","payload":{}} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of GraphQL errors, but got {}"`;
+exports[`should report invalid message {"id":"id","type":"error","payload":{}} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of errors, but got {}"`;
 
-exports[`should report invalid message {"id":"id","type":"error"} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of GraphQL errors, but got undefined"`;
+exports[`should report invalid message {"id":"id","type":"error"} with descriptive error 1`] = `""error" message expects the 'payload' property to be an array of errors, but got undefined"`;
 
 exports[`should report invalid message {"id":"id","type":"next","payload":""} with descriptive error 1`] = `""next" message expects the 'payload' property to be an object, but got string"`;
 

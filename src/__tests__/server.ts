@@ -1,13 +1,3 @@
-import {
-  parse,
-  buildSchema,
-  execute,
-  subscribe,
-  GraphQLError,
-  ExecutionArgs,
-  ExecutionResult,
-  GraphQLSchema,
-} from 'graphql';
 import { Context, handleProtocols, makeServer } from '../server';
 import {
   GRAPHQL_TRANSPORT_WS_PROTOCOL,
@@ -15,8 +5,9 @@ import {
   MessageType,
   parseMessage,
   stringifyMessage,
+  ErrorMessage,
 } from '../common';
-import { schema, schemaConfig } from './fixtures/simple';
+import { GET_VALUE_QUERY, PING_SUB, simpleSubscribe } from './fixtures/simple';
 import { createTClient, startWSTServer as startTServer } from './utils';
 
 // silence console.error calls for nicer tests overview
@@ -34,363 +25,8 @@ afterAll(() => {
  * Tests
  */
 
-it('should use the schema resolved from a promise on subscribe', async (done) => {
-  expect.assertions(2);
-
-  const schema = new GraphQLSchema(schemaConfig);
-
-  const { url } = await startTServer({
-    schema: (_, msg) => {
-      expect(msg.id).toBe('1');
-      return Promise.resolve(schema);
-    },
-    execute: (args) => {
-      expect(args.schema).toBe(schema);
-      return execute(args);
-    },
-    onComplete: () => done(),
-  });
-  const client = await createTClient(url, GRAPHQL_TRANSPORT_WS_PROTOCOL);
-  client.ws.send(
-    stringifyMessage<MessageType.ConnectionInit>({
-      type: MessageType.ConnectionInit,
-    }),
-  );
-  await client.waitForMessage(); // ack
-
-  client.ws.send(
-    stringifyMessage<MessageType.Subscribe>({
-      id: '1',
-      type: MessageType.Subscribe,
-      payload: {
-        query: '{ getValue }',
-      },
-    }),
-  );
-});
-
-it('should use the provided validate function', async () => {
-  const { url } = await startTServer({
-    schema,
-    validate: () => [new GraphQLError('Nothing is valid')],
-  });
-  const client = await createTClient(url, GRAPHQL_TRANSPORT_WS_PROTOCOL);
-  client.ws.send(
-    stringifyMessage<MessageType.ConnectionInit>({
-      type: MessageType.ConnectionInit,
-    }),
-  );
-  await client.waitForMessage(); // ack
-
-  client.ws.send(
-    stringifyMessage<MessageType.Subscribe>({
-      id: '1',
-      type: MessageType.Subscribe,
-      payload: {
-        query: '{ getValue }',
-      },
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data)).toEqual({
-      id: '1',
-      type: MessageType.Error,
-      payload: [{ message: 'Nothing is valid' }],
-    });
-  });
-});
-
-it('should use the provided roots as resolvers', async () => {
-  const schema = buildSchema(`
-    type Query {
-      hello: String
-    }
-    type Subscription {
-      count: Int
-    }
-  `);
-
-  const roots = {
-    query: {
-      hello: () => 'Hello World!',
-    },
-    subscription: {
-      count: async function* () {
-        for (const num of [1, 2, 3]) {
-          yield num;
-        }
-      },
-    },
-  };
-
-  const { url } = await startTServer({
-    schema,
-    roots,
-  });
-
-  const client = await createTClient(url);
-  client.ws.send(
-    stringifyMessage<MessageType.ConnectionInit>({
-      type: MessageType.ConnectionInit,
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-  });
-
-  client.ws.send(
-    stringifyMessage<MessageType.Subscribe>({
-      id: '1',
-      type: MessageType.Subscribe,
-      payload: {
-        query: `{ hello }`,
-      },
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data)).toEqual({
-      id: '1',
-      type: MessageType.Next,
-      payload: { data: { hello: 'Hello World!' } },
-    });
-  });
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data)).toEqual({
-      id: '1',
-      type: MessageType.Complete,
-    });
-  });
-
-  client.ws.send(
-    stringifyMessage<MessageType.Subscribe>({
-      id: '2',
-      type: MessageType.Subscribe,
-      payload: {
-        query: `subscription { count }`,
-      },
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data).type).toBe(MessageType.Next);
-  });
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data).type).toBe(MessageType.Next);
-  });
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data).type).toBe(MessageType.Next);
-  });
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data)).toEqual({
-      id: '2',
-      type: MessageType.Complete,
-    });
-  });
-});
-
-it('should pass in the context value from the config', async () => {
-  const context = {};
-
-  const executeFn = jest.fn((args) => execute(args));
-  const subscribeFn = jest.fn((args) => subscribe(args));
-
-  const { url } = await startTServer({
-    context,
-    execute: executeFn,
-    subscribe: subscribeFn,
-  });
-
-  const client = await createTClient(url);
-  client.ws.send(
-    stringifyMessage<MessageType.ConnectionInit>({
-      type: MessageType.ConnectionInit,
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-  });
-
-  client.ws.send(
-    stringifyMessage<MessageType.Subscribe>({
-      id: '1',
-      type: MessageType.Subscribe,
-      payload: {
-        query: `{ getValue }`,
-      },
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    const message = parseMessage(data);
-    expect(message.type).toBe(MessageType.Next);
-    // @ts-expect-error it is next message
-    expect(message.id).toBe('1');
-  });
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data)).toEqual({
-      id: '1',
-      type: MessageType.Complete,
-    });
-  });
-
-  expect(executeFn).toBeCalled();
-  expect(executeFn.mock.calls[0][0].contextValue).toBe(context);
-
-  client.ws.send(
-    stringifyMessage<MessageType.Subscribe>({
-      id: '2',
-      type: MessageType.Subscribe,
-      payload: {
-        query: `subscription { greetings }`,
-      },
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    const message = parseMessage(data);
-    expect(message.type).toBe(MessageType.Next);
-    // @ts-expect-error it is next message
-    expect(message.id).toBe('2');
-  });
-
-  expect(subscribeFn).toBeCalled();
-  expect(subscribeFn.mock.calls[0][0].contextValue).toBe(context);
-});
-
-it('should pass the `onSubscribe` exec args to the `context` option and use it', async (done) => {
-  const context = {};
-  const execArgs = {
-    // no context here
-    schema,
-    document: parse(`query { getValue }`),
-  };
-
-  const { url } = await startTServer({
-    onSubscribe: () => {
-      return execArgs;
-    },
-    context: (_ctx, _msg, args) => {
-      expect(args).toBe(args); // from `onSubscribe`
-      return context; // will be injected
-    },
-    execute: (args) => {
-      expect(args).toBe(execArgs); // from `onSubscribe`
-      expect(args.contextValue).toBe(context); // injected by `context`
-      done();
-      return execute(args);
-    },
-    subscribe,
-  });
-
-  const client = await createTClient(url);
-  client.ws.send(
-    stringifyMessage<MessageType.ConnectionInit>({
-      type: MessageType.ConnectionInit,
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-  });
-
-  client.ws.send(
-    stringifyMessage<MessageType.Subscribe>({
-      id: '1',
-      type: MessageType.Subscribe,
-      payload: {
-        query: `{ getValue }`,
-      },
-    }),
-  );
-});
-
-it('should use the root from the `roots` option if the `onSubscribe` doesnt provide one', async (done) => {
-  const rootValue = {};
-  const execArgs = {
-    // no rootValue here
-    schema,
-    document: parse(`query { getValue }`),
-  };
-
-  const { url } = await startTServer({
-    roots: {
-      query: rootValue,
-    },
-    onSubscribe: () => {
-      return execArgs;
-    },
-    execute: (args) => {
-      expect(args).toBe(execArgs); // from `onSubscribe`
-      expect(args.rootValue).toBe(rootValue); // injected by `roots`
-      done();
-      return execute(args);
-    },
-    subscribe,
-  });
-
-  const client = await createTClient(url);
-  client.ws.send(
-    stringifyMessage<MessageType.ConnectionInit>({
-      type: MessageType.ConnectionInit,
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-  });
-
-  client.ws.send(
-    stringifyMessage<MessageType.Subscribe>({
-      id: '1',
-      type: MessageType.Subscribe,
-      payload: {
-        query: `{ getValue }`,
-      },
-    }),
-  );
-});
-
-it('should prefer the `onSubscribe` context value even if `context` option is set', async (done) => {
-  const context = 'not-me';
-  const execArgs = {
-    contextValue: 'me-me', // my custom context
-    schema,
-    document: parse(`query { getValue }`),
-  };
-
-  const { url } = await startTServer({
-    onSubscribe: () => {
-      return execArgs;
-    },
-    context, // should be ignored because there is one in `execArgs`
-    execute: (args) => {
-      expect(args).toBe(execArgs); // from `onSubscribe`
-      expect(args.contextValue).not.toBe(context); // from `onSubscribe`
-      done();
-      return execute(args);
-    },
-    subscribe,
-  });
-
-  const client = await createTClient(url);
-  client.ws.send(
-    stringifyMessage<MessageType.ConnectionInit>({
-      type: MessageType.ConnectionInit,
-    }),
-  );
-  await client.waitForMessage(({ data }) => {
-    expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-  });
-
-  client.ws.send(
-    stringifyMessage<MessageType.Subscribe>({
-      id: '1',
-      type: MessageType.Subscribe,
-      payload: {
-        query: `{ getValue }`,
-      },
-    }),
-  );
-});
-
 it('should use a custom JSON message replacer function', async () => {
   const { url } = await startTServer({
-    schema,
     jsonMessageReplacer: (key, value) => {
       if (key === 'type') {
         return 'CONNECTION_ACK';
@@ -413,7 +49,6 @@ it('should use a custom JSON message replacer function', async () => {
 
 it('should use a custom JSON message reviver function', async () => {
   const { url } = await startTServer({
-    schema,
     jsonMessageReviver: (key, value) => {
       if (key === 'type') {
         return MessageType.ConnectionInit;
@@ -699,7 +334,16 @@ describe('Ping/Pong', () => {
   it('should invoke the websocket callback on ping and not reply automatically', async (done) => {
     const payload = { not: 'relevant' };
 
-    const closed = makeServer({}).opened(
+    const closed = makeServer({
+      subscribe() {
+        return {
+          waitToResolve: Promise.resolve(),
+          cancel() {
+            //
+          },
+        };
+      },
+    }).opened(
       {
         protocol: GRAPHQL_TRANSPORT_WS_PROTOCOL,
         send: () => fail('Shouldnt have responded to a ping'),
@@ -725,7 +369,16 @@ describe('Ping/Pong', () => {
   it('should invoke the websocket callback on pong', async (done) => {
     const payload = { not: 'relevant' };
 
-    const closed = makeServer({}).opened(
+    const closed = makeServer({
+      subscribe() {
+        return {
+          waitToResolve: Promise.resolve(),
+          cancel() {
+            //
+          },
+        };
+      },
+    }).opened(
       {
         protocol: GRAPHQL_TRANSPORT_WS_PROTOCOL,
         send: () => Promise.resolve(),
@@ -774,177 +427,18 @@ describe('Subscribe', () => {
     });
   });
 
-  it('should directly use the execution arguments returned from `onSubscribe`', async () => {
-    const nopeArgs = {
-      schema,
-      operationName: 'Nope',
-      document: parse(`query Nope { getValue }`),
-      rootValue: null,
+  it('should use the errors returned from `onError`', async () => {
+    const error: ErrorMessage = {
+      id: '1',
+      payload: [
+        { name: 't', message: 'Report' },
+        { name: 't', message: 'Me' },
+      ],
+      type: MessageType.Error,
     };
     const { url } = await startTServer({
-      schema: undefined,
-      roots: {
-        query: { not: 'me' },
-      },
-      execute: (args) => {
-        expect(args.schema).toBe(nopeArgs.schema); // schema from nopeArgs
-        expect(args.rootValue).toBeNull(); // nopeArgs provided rootValue: null, so don't overwrite
-        expect(args.operationName).toBe('Nope');
-        expect(args.variableValues).toBeUndefined(); // nopeArgs didnt provide variables
-        return execute(args);
-      },
-      onSubscribe: (_ctx, _message) => {
-        return nopeArgs;
-      },
-    });
-
-    const client = await createTClient(url);
-
-    client.ws.send(
-      stringifyMessage<MessageType.ConnectionInit>({
-        type: MessageType.ConnectionInit,
-      }),
-    );
-
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-      client.ws.send(
-        stringifyMessage<MessageType.Subscribe>({
-          id: '1',
-          type: MessageType.Subscribe,
-          payload: {
-            operationName: 'Ping',
-            query: `subscribe Ping {
-              ping
-            }`,
-            variables: {},
-          },
-        }),
-      );
-    });
-
-    // because onsubscribe changed the request
-
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data)).toEqual({
-        id: '1',
-        type: MessageType.Next,
-        payload: { data: { getValue: 'value' } },
-      });
-    });
-
-    await client.waitForClose(() => {
-      fail('Shouldt have closed');
-    }, 30);
-  });
-
-  it('should report the graphql errors returned from `onSubscribe`', async () => {
-    const { url } = await startTServer({
-      onSubscribe: (_ctx, _message) => {
-        return [new GraphQLError('Report'), new GraphQLError('Me')];
-      },
-    });
-
-    const client = await createTClient(url);
-
-    client.ws.send(
-      stringifyMessage<MessageType.ConnectionInit>({
-        type: MessageType.ConnectionInit,
-      }),
-    );
-
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-      client.ws.send(
-        stringifyMessage<MessageType.Subscribe>({
-          id: '1',
-          type: MessageType.Subscribe,
-          payload: {
-            operationName: 'Ping',
-            query: `subscribe Ping {
-              ping
-            }`,
-            variables: {},
-          },
-        }),
-      );
-    });
-
-    // because onsubscribe changed the request
-
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data)).toEqual({
-        id: '1',
-        type: MessageType.Error,
-        payload: [{ message: 'Report' }, { message: 'Me' }],
-      });
-    });
-
-    await client.waitForClose(() => {
-      fail('Shouldt have closed');
-    }, 30);
-  });
-
-  it('should use the execution result returned from `onNext`', async () => {
-    const { url } = await startTServer({
-      onNext: (_ctx, _message) => {
-        return {
-          data: { hey: 'there' },
-        };
-      },
-    });
-
-    const client = await createTClient(url);
-
-    client.ws.send(
-      stringifyMessage<MessageType.ConnectionInit>({
-        type: MessageType.ConnectionInit,
-      }),
-    );
-
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-      client.ws.send(
-        stringifyMessage<MessageType.Subscribe>({
-          id: '1',
-          type: MessageType.Subscribe,
-          payload: {
-            query: `subscription {
-              greetings
-            }`,
-            variables: {},
-          },
-        }),
-      );
-    });
-
-    // because onnext changed the result
-
-    for (let i = 0; i < 5; i++) {
-      await client.waitForMessage(({ data }) => {
-        expect(parseMessage(data)).toEqual({
-          id: '1',
-          type: MessageType.Next,
-          payload: { data: { hey: 'there' } },
-        });
-      });
-    }
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data)).toEqual({
-        id: '1',
-        type: MessageType.Complete,
-      });
-    });
-
-    await client.waitForClose(() => {
-      fail('Shouldt have closed');
-    }, 30);
-  });
-
-  it('should use the graphql errors returned from `onError`', async () => {
-    const { url } = await startTServer({
       onError: (_ctx, _message) => {
-        return [new GraphQLError('Itsa me!'), new GraphQLError('Anda me!')];
+        return error;
       },
     });
 
@@ -978,61 +472,9 @@ describe('Subscribe', () => {
       expect(parseMessage(data)).toEqual({
         id: '1',
         type: MessageType.Error,
-        payload: [{ message: 'Itsa me!' }, { message: 'Anda me!' }],
+        payload: error.payload,
       });
     });
-
-    await client.waitForClose(() => {
-      fail('Shouldt have closed');
-    }, 30);
-  });
-
-  it('should use the operation result returned from `onOperation`', async () => {
-    const { url } = await startTServer({
-      onOperation: (_ctx, _message) => {
-        return (async function* () {
-          for (let i = 0; i < 3; i++) {
-            yield { data: { replaced: 'with me' } };
-          }
-        })();
-      },
-    });
-
-    const client = await createTClient(url);
-
-    client.ws.send(
-      stringifyMessage<MessageType.ConnectionInit>({
-        type: MessageType.ConnectionInit,
-      }),
-    );
-
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-      client.ws.send(
-        stringifyMessage<MessageType.Subscribe>({
-          id: '1',
-          type: MessageType.Subscribe,
-          payload: {
-            query: `query {
-              getValue
-            }`,
-            variables: {},
-          },
-        }),
-      );
-    });
-
-    // because onoperation changed the execution result
-
-    for (let i = 0; i < 3; i++) {
-      await client.waitForMessage(({ data }) => {
-        expect(parseMessage(data)).toEqual({
-          id: '1',
-          type: MessageType.Next,
-          payload: { data: { replaced: 'with me' } },
-        });
-      });
-    }
 
     await client.waitForClose(() => {
       fail('Shouldt have closed');
@@ -1040,9 +482,7 @@ describe('Subscribe', () => {
   });
 
   it('should execute the query of `string` type, "next" the result and then "complete"', async () => {
-    const { url } = await startTServer({
-      schema,
-    });
+    const { url } = await startTServer({});
 
     const client = await createTClient(url);
     client.ws.send(
@@ -1059,9 +499,7 @@ describe('Subscribe', () => {
           type: MessageType.Subscribe,
           payload: {
             operationName: 'TestString',
-            query: `query TestString {
-                getValue
-              }`,
+            query: GET_VALUE_QUERY,
             variables: {},
           },
         }),
@@ -1086,15 +524,33 @@ describe('Subscribe', () => {
 
   it('should execute the live query, "next" multiple results and then "complete"', async () => {
     const { url } = await startTServer({
-      schema,
-      execute: async function* () {
-        for (const value of ['Hi', 'Hello', 'Sup']) {
-          yield {
-            data: {
+      subscribe: ({ emit }) => {
+        async function* gen() {
+          for (const value of ['Hi', 'Hello', 'Sup']) {
+            yield {
               getValue: value,
-            },
-          };
+            };
+          }
         }
+
+        const generator = gen();
+
+        async function run() {
+          for await (const res of generator) {
+            emit({
+              id: '1',
+              payload: { data: res },
+              type: MessageType.Next,
+            });
+          }
+        }
+
+        return {
+          waitToResolve: run(),
+          cancel() {
+            generator.return(undefined);
+          },
+        };
       },
     });
 
@@ -1113,9 +569,7 @@ describe('Subscribe', () => {
           type: MessageType.Subscribe,
           payload: {
             operationName: 'TestString',
-            query: `query TestString {
-                getValue
-              }`,
+            query: 'does not matter',
             variables: {},
           },
         }),
@@ -1154,75 +608,26 @@ describe('Subscribe', () => {
     });
   });
 
-  it('should be able to complete a long running query before the result becomes available', async () => {
-    let resultIsHere = (_result: ExecutionResult) => {
-        /* noop for calming typescript */
-      },
-      execute = () => {
-        /* noop for calming typescript */
-      };
-    const waitForExecute = new Promise<void>((resolve) => (execute = resolve));
-
-    const { url, getClients } = await startTServer({
-      schema,
-      execute: () =>
-        new Promise<ExecutionResult>((resolve) => {
-          resultIsHere = resolve;
-          execute();
-        }),
-    });
-
-    const client = await createTClient(url);
-    client.ws.send(
-      stringifyMessage<MessageType.ConnectionInit>({
-        type: MessageType.ConnectionInit,
-      }),
-    );
-
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-      client.ws.send(
-        stringifyMessage<MessageType.Subscribe>({
-          id: '1',
-          type: MessageType.Subscribe,
-          payload: {
-            query: 'query { getValue }',
-          },
-        }),
-      );
-    });
-
-    await waitForExecute;
-
-    // complete before resolve
-    client.ws.send(
-      stringifyMessage<MessageType.Complete>({
-        id: '1',
-        type: MessageType.Complete,
-      }),
-    );
-
-    // will be just one client and the only next message can be "complete"
-    for (const client of getClients()) {
-      await new Promise<void>((resolve) => {
-        const off = client.onMessage(() => {
-          off();
-          resolve();
-        });
-      });
-    }
-
-    // result became available after complete
-    resultIsHere({ data: { getValue: 'nope' } });
-
-    await client.waitForMessage(() => {
-      fail('No further activity expected after complete');
-    }, 30);
-  });
-
-  it('should execute the query and "error" out because of validation errors', async () => {
+  it('should execute the query and "error"', async () => {
+    const error: ErrorMessage = {
+      id: '1',
+      payload: [
+        { name: 't', message: 'Report' },
+        { name: 't', message: 'Me' },
+      ],
+      type: MessageType.Error,
+    };
     const { url } = await startTServer({
-      schema,
+      subscribe() {
+        return {
+          waitToResolve: new Promise((resolve) =>
+            setTimeout(() => resolve(error), 10),
+          ),
+          cancel() {
+            //
+          },
+        };
+      },
     });
 
     const client = await createTClient(url);
@@ -1240,10 +645,7 @@ describe('Subscribe', () => {
           type: MessageType.Subscribe,
           payload: {
             operationName: 'TestNoField',
-            query: `query TestNoField {
-              testNumber
-              testBoolean
-            }`,
+            query: `some random error`,
             variables: {},
           },
         }),
@@ -1251,30 +653,7 @@ describe('Subscribe', () => {
     });
 
     await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data)).toEqual({
-        id: '1',
-        type: MessageType.Error,
-        payload: [
-          {
-            locations: [
-              {
-                column: 15,
-                line: 2,
-              },
-            ],
-            message: 'Cannot query field "testNumber" on type "Query".',
-          },
-          {
-            locations: [
-              {
-                column: 15,
-                line: 3,
-              },
-            ],
-            message: 'Cannot query field "testBoolean" on type "Query".',
-          },
-        ],
-      });
+      expect(parseMessage(data)).toEqual(error);
     });
 
     await client.waitForClose(() => {
@@ -1284,7 +663,7 @@ describe('Subscribe', () => {
 
   it('should execute the subscription and "next" the published payload', async () => {
     const { url } = await startTServer({
-      schema,
+      subscribe: simpleSubscribe,
     });
 
     const client = await createTClient(url);
@@ -1302,9 +681,7 @@ describe('Subscribe', () => {
           type: MessageType.Subscribe,
           payload: {
             operationName: 'Greetings',
-            query: `subscription Greetings {
-              greetings
-            }`,
+            query: 'subscription { greetings }',
           },
         }),
       );
@@ -1325,9 +702,7 @@ describe('Subscribe', () => {
   });
 
   it('should stop dispatching messages after completing a subscription', async () => {
-    const server = await startTServer({
-      schema,
-    });
+    const server = await startTServer({});
 
     const client = await createTClient(server.url);
     client.ws.send(
@@ -1343,7 +718,7 @@ describe('Subscribe', () => {
           id: '1',
           type: MessageType.Subscribe,
           payload: {
-            query: `subscription { ping }`,
+            query: PING_SUB,
           },
         }),
       );
@@ -1407,7 +782,7 @@ describe('Subscribe', () => {
         id: 'not-unique',
         type: MessageType.Subscribe,
         payload: {
-          query: 'query { getValue }',
+          query: GET_VALUE_QUERY,
         },
       }),
     );
@@ -1421,10 +796,16 @@ describe('Subscribe', () => {
 
   it('should close the socket on duplicate operation requests even if one is still preparing', async () => {
     const { url } = await startTServer({
-      onSubscribe: () =>
-        new Promise(() => {
-          /* i never resolve, the subscription will be preparing forever */
-        }),
+      subscribe: () => {
+        return {
+          waitToResolve: new Promise(() => {
+            /* i never resolve, the subscription will be preparing forever */
+          }),
+          cancel() {
+            /* */
+          },
+        };
+      },
     });
 
     const client = await createTClient(url);
@@ -1441,7 +822,7 @@ describe('Subscribe', () => {
           id: 'not-unique',
           type: MessageType.Subscribe,
           payload: {
-            query: 'query { getValue }',
+            query: GET_VALUE_QUERY,
           },
         }),
       );
@@ -1452,7 +833,7 @@ describe('Subscribe', () => {
         id: 'not-unique',
         type: MessageType.Subscribe,
         payload: {
-          query: 'query { getValue }',
+          query: GET_VALUE_QUERY,
         },
       }),
     );
@@ -1461,55 +842,6 @@ describe('Subscribe', () => {
       expect(event.code).toBe(CloseCode.SubscriberAlreadyExists);
       expect(event.reason).toBe('Subscriber for not-unique already exists');
       expect(event.wasClean).toBeTruthy();
-    });
-  });
-
-  it('should support persisted queries', async () => {
-    const queriesStore: Record<string, ExecutionArgs> = {
-      iWantTheValue: {
-        schema,
-        document: parse('query GetValue { getValue }'),
-      },
-    };
-
-    const { url } = await startTServer({
-      onSubscribe: (_ctx, msg) => {
-        // search using `SubscriptionPayload.query` as QueryID
-        // check the client example below for better understanding
-        const hit = queriesStore[msg.payload.query as string];
-        return {
-          ...hit,
-          variableValues: msg.payload.variables, // use the variables from the client
-        };
-      },
-    });
-
-    const client = await createTClient(url);
-    client.ws.send(
-      stringifyMessage<MessageType.ConnectionInit>({
-        type: MessageType.ConnectionInit,
-      }),
-    );
-
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-      client.ws.send(
-        stringifyMessage<MessageType.Subscribe>({
-          id: '1',
-          type: MessageType.Subscribe,
-          payload: {
-            query: 'iWantTheValue',
-          },
-        }),
-      );
-    });
-
-    await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data)).toEqual({
-        id: '1',
-        type: MessageType.Next,
-        payload: { data: { getValue: 'value' } },
-      });
     });
   });
 
@@ -1536,7 +868,7 @@ describe('Subscribe', () => {
         id: '1',
         type: MessageType.Subscribe,
         payload: {
-          query: 'subscription { ping }',
+          query: PING_SUB,
         },
       }),
     );
@@ -1580,7 +912,7 @@ describe('Subscribe', () => {
         id: '1',
         type: MessageType.Subscribe,
         payload: {
-          query: 'subscription { ping }',
+          query: PING_SUB,
         },
       }),
     );
@@ -1599,9 +931,17 @@ describe('Subscribe', () => {
   it('should respect completed subscriptions even if subscribe operation stalls', async () => {
     let continueSubscribe: (() => void) | undefined = undefined;
     const server = await startTServer({
-      subscribe: async (...args) => {
-        await new Promise<void>((resolve) => (continueSubscribe = resolve));
-        return subscribe(...args);
+      subscribe: () => {
+        async function run() {
+          await new Promise<void>((resolve) => (continueSubscribe = resolve));
+        }
+
+        return {
+          waitToResolve: run(),
+          cancel() {
+            //
+          },
+        };
       },
     });
 
@@ -1618,7 +958,7 @@ describe('Subscribe', () => {
         id: '1',
         type: MessageType.Subscribe,
         payload: {
-          query: 'subscription { ping }',
+          query: PING_SUB,
         },
       }),
     );
@@ -1663,12 +1003,14 @@ describe('Subscribe', () => {
     let currCtx: Context;
     makeServer({
       connectionInitWaitTimeout: 0, // defaults to 3 seconds
-      schema,
-      execute: () => {
-        throw null;
-      },
-      onSubscribe: (ctx) => {
+      subscribe: ({ ctx }) => {
         currCtx = ctx;
+        return {
+          waitToResolve: Promise.reject(),
+          cancel() {
+            //
+          },
+        };
       },
     }).opened(
       {

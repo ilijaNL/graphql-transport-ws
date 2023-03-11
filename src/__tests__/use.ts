@@ -7,7 +7,6 @@ import {
   MessageType,
   stringifyMessage,
   parseMessage,
-  SubscribePayload,
   GRAPHQL_TRANSPORT_WS_PROTOCOL,
   CloseCode,
 } from '../common';
@@ -19,6 +18,11 @@ import {
   FastifyExtra,
   TClient,
 } from './utils';
+import {
+  emptySubscribe,
+  GET_VALUE_QUERY,
+  simpleSubscribe,
+} from './fixtures/simple';
 
 // silence console.error calls for nicer tests overview
 const consoleError = console.error;
@@ -195,12 +199,7 @@ for (const { tServer, skipUWS, startTServer } of tServers) {
       });
       await server.dispose();
 
-      async function test(
-        url: string,
-        payload: SubscribePayload = {
-          query: `query { getValue }`,
-        },
-      ) {
+      async function test(url: string, query: string) {
         const client = await createTClient(url);
         client.ws.send(
           stringifyMessage<MessageType.ConnectionInit>({
@@ -214,7 +213,7 @@ for (const { tServer, skipUWS, startTServer } of tServers) {
             stringifyMessage<MessageType.Subscribe>({
               id: '1',
               type: MessageType.Subscribe,
-              payload,
+              payload: { query: query },
             }),
           );
         });
@@ -226,142 +225,43 @@ for (const { tServer, skipUWS, startTServer } of tServers) {
         });
       }
 
-      // onSubscribe
-      server = await startTServer({
-        onSubscribe: () => {
-          throw error;
-        },
-      });
-      await test(server.url);
-      await server.dispose();
-
-      server = await startTServer({
-        onOperation: () => {
-          throw error;
-        },
-      });
-      await test(server.url);
-      await server.dispose();
-
-      // execute
-      server = await startTServer({
-        execute: () => {
-          throw error;
-        },
-      });
-      await test(server.url);
-      await server.dispose();
-
       // subscribe
       server = await startTServer({
         subscribe: () => {
           throw error;
         },
       });
-      await test(server.url, { query: 'subscription { greetings }' });
+      await test(server.url, GET_VALUE_QUERY);
       await server.dispose();
 
-      // onNext
+      // onNext;
       server = await startTServer({
         onNext: () => {
           throw error;
         },
       });
-      await test(server.url);
+      await test(server.url, GET_VALUE_QUERY);
       await server.dispose();
 
       // onError
       server = await startTServer({
-        onError: () => {
+        subscribe: simpleSubscribe,
+        onError: async () => {
           throw error;
         },
       });
-      await test(server.url, { query: 'query { noExisto }' });
+      await test(server.url, 'query { noExisto }');
       await server.dispose();
 
       // onComplete
       server = await startTServer({
+        subscribe: emptySubscribe,
         onComplete: () => {
           throw error;
         },
       });
-      await test(server.url);
+      await test(server.url, '');
       await server.dispose();
-    });
-
-    it('should close the socket on request if schema is left undefined', async () => {
-      const { url } = await startTServer({
-        schema: undefined,
-      });
-
-      const client = await createTClient(url);
-
-      client.ws.send(
-        stringifyMessage<MessageType.ConnectionInit>({
-          type: MessageType.ConnectionInit,
-        }),
-      );
-
-      await client.waitForMessage(({ data }) => {
-        expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-        client.ws.send(
-          stringifyMessage<MessageType.Subscribe>({
-            id: '1',
-            type: MessageType.Subscribe,
-            payload: {
-              operationName: 'TestString',
-              query: `query TestString {
-                  getValue
-                }`,
-              variables: {},
-            },
-          }),
-        );
-      });
-
-      await client.waitForClose((event) => {
-        expect(event.code).toBe(CloseCode.InternalServerError);
-        expect(event.reason).toBe('The GraphQL schema is not provided');
-        expect(event.wasClean).toBeTruthy();
-      });
-    });
-
-    it('should close the socket on empty arrays returned from `onSubscribe`', async () => {
-      const { url } = await startTServer({
-        onSubscribe: () => {
-          return [];
-        },
-      });
-
-      const client = await createTClient(url);
-
-      client.ws.send(
-        stringifyMessage<MessageType.ConnectionInit>({
-          type: MessageType.ConnectionInit,
-        }),
-      );
-
-      await client.waitForMessage(({ data }) => {
-        expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
-      });
-
-      client.ws.send(
-        stringifyMessage<MessageType.Subscribe>({
-          id: '1',
-          type: MessageType.Subscribe,
-          payload: {
-            query: 'subscription { ping }',
-          },
-        }),
-      );
-
-      await client.waitForClose((event) => {
-        expect(event.code).toBe(CloseCode.InternalServerError);
-        expect(event.reason).toBe(
-          'Invalid return value from onSubscribe hook, expected an array of GraphQLError objects',
-        );
-        expect(event.wasClean).toBeTruthy();
-      });
     });
 
     it('should close socket with error thrown from the callback', async () => {
@@ -455,9 +355,13 @@ for (const { tServer, skipUWS, startTServer } of tServers) {
       },
     );
 
-    // uWebSocket.js cannot have errors emitted on the socket
+    // // uWebSocket.js cannot have errors emitted on the socket
     skipUWS('should limit the socket emitted error message size', async () => {
-      const { url, waitForClient } = await startTServer();
+      const { url, waitForClient } = await startTServer({
+        // onConnect(ctx) {
+        //   console.log('connected', ctx);
+        // },
+      });
 
       const client = await createTClient(url);
       client.ws.send(
@@ -466,12 +370,14 @@ for (const { tServer, skipUWS, startTServer } of tServers) {
         }),
       );
 
-      const emittedError = new Error(
-        'i am exactly 124 characters long i am exactly 124 characters long i am exactly 124 characters long i am exactly 124 characte',
-      );
       await waitForClient((client) => {
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        client.socket!.emit('error', emittedError);
+        client.socket!.emit(
+          'error',
+          new Error(
+            'i am exactly 124 characters long i am exactly 124 characters long i am exactly 124 characters long i am exactly 124 characte',
+          ),
+        );
       });
 
       await client.waitForClose((event) => {
