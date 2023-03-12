@@ -165,8 +165,8 @@ export async function startWSTServer(
   const server = useWSServer(
     {
       ...options,
-      subscribe: (props) => {
-        const sub = (options.subscribe ?? simpleSubscribe)(props);
+      getSubscription: (props) => {
+        const sub = (options.getSubscription ?? simpleSubscribe)(props);
         pendingOperations++;
         emitter.emit('operation');
 
@@ -357,8 +357,8 @@ export async function startUWSTServer(
                 emitter.emit('conn');
                 return permitted;
               },
-              subscribe: (props) => {
-                const sub = (options.subscribe ?? simpleSubscribe)(props);
+              getSubscription: (props) => {
+                const sub = (options.getSubscription ?? simpleSubscribe)(props);
                 pendingOperations++;
                 emitter.emit('operation');
 
@@ -511,8 +511,8 @@ export async function startFastifyWSTServer(
             emitter.emit('conn');
             return permitted;
           },
-          subscribe: (props) => {
-            const sub = (options.subscribe ?? simpleSubscribe)(props);
+          getSubscription: (props) => {
+            const sub = (options.getSubscription ?? simpleSubscribe)(props);
             pendingOperations++;
             emitter.emit('operation');
 

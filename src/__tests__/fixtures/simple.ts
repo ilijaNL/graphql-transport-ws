@@ -18,10 +18,10 @@ export function pong(key = 'global'): void {
   }
 }
 
-export const emptySubscribe: ServerOptions['subscribe'] = () => {
+export const emptySubscribe: ServerOptions['getSubscription'] = () => {
   return {
-    waitToResolve: Promise.resolve(),
-    cancel() {
+    start: () => Promise.resolve(),
+    stop() {
       //
     },
   };
@@ -43,22 +43,18 @@ async function getValue(
   });
 }
 
-export const simpleSubscribe: ServerOptions['subscribe'] = ({
+export const simpleSubscribe: ServerOptions['getSubscription'] = ({
   message,
-  emit,
 }) => {
-  let waitToResolve: Promise<ErrorMessage | void> =
-    Promise.resolve<ErrorMessage>({
-      id: message.id,
-      payload: [{ message: 'unknown', name: 'operation not known' }],
-      type: MessageType.Error,
-    });
-  let cancelFn = () => {
-    /* */
-  };
-
   if (message.payload.query === GET_VALUE_QUERY) {
-    waitToResolve = getValue(message, emit);
+    return {
+      start(emit) {
+        return getValue(message, emit);
+      },
+      stop() {
+        //
+      },
+    };
   }
 
   if (message.payload.query === 'subscription { greetings }') {
@@ -68,24 +64,26 @@ export const simpleSubscribe: ServerOptions['subscribe'] = ({
       }
     })();
 
-    waitToResolve = (async function () {
-      for await (const l of iter) {
-        await emit({
-          id: message.id,
-          payload: { data: { greetings: l } },
-          type: MessageType.Next,
-        });
-      }
-    })();
-
-    cancelFn = () => {
-      iter.return(undefined);
+    return {
+      start: async function (emit) {
+        for await (const l of iter) {
+          await emit({
+            id: message.id,
+            payload: { data: { greetings: l } },
+            type: MessageType.Next,
+          });
+        }
+      },
+      stop: () => {
+        iter.return(undefined);
+      },
     };
   }
 
   if (message.payload.query === PING_SUB) {
     const vars = message.payload.variables as Record<string, string>;
     const key = vars?.key !== undefined ? vars.key : 'global';
+
     const iterator: AsyncIterableIterator<unknown> = {
       [Symbol.asyncIterator]() {
         return this;
@@ -110,18 +108,19 @@ export const simpleSubscribe: ServerOptions['subscribe'] = ({
       },
     };
 
-    waitToResolve = (async function () {
-      for await (const l of iterator) {
-        await emit({
-          id: message.id,
-          payload: { data: { ping: l } },
-          type: MessageType.Next,
-        });
-      }
-    })();
-
-    cancelFn = () => {
-      iterator.return?.(undefined);
+    return {
+      start: async function (emit) {
+        for await (const l of iterator) {
+          await emit({
+            id: message.id,
+            payload: { data: { ping: l } },
+            type: MessageType.Next,
+          });
+        }
+      },
+      stop: () => {
+        iterator.return?.(undefined);
+      },
     };
   }
 
@@ -147,25 +146,31 @@ export const simpleSubscribe: ServerOptions['subscribe'] = ({
       },
     };
 
-    const it = iterator[Symbol.asyncIterator]();
-
-    waitToResolve = (async function () {
-      for await (const l of it) {
-        await emit({
-          id: message.id,
-          payload: { data: { ping: l } },
-          type: MessageType.Next,
-        });
-      }
-    })();
-
-    cancelFn = () => {
-      it.return?.(undefined);
+    return {
+      start: async function (emit) {
+        for await (const l of iterator) {
+          await emit({
+            id: message.id,
+            payload: { data: { ping: l } },
+            type: MessageType.Next,
+          });
+        }
+      },
+      stop: () => {
+        iterator.return(undefined);
+      },
     };
   }
 
   return {
-    cancel: cancelFn,
-    waitToResolve: waitToResolve,
+    stop: () => {
+      //
+    },
+    start: () =>
+      Promise.resolve<ErrorMessage>({
+        id: message.id,
+        payload: [{ message: 'unknown', name: 'operation not known' }],
+        type: MessageType.Error,
+      }),
   };
 };

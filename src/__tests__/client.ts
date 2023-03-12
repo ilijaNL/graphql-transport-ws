@@ -52,8 +52,8 @@ interface TSubscribe<T> {
 }
 
 function tsubscribe<T = unknown>(
-  client: Client,
-  payload: Record<string, unknown>,
+  client: Client<{ query: string; variables?: Record<string, unknown> }>,
+  payload: { query: string; variables?: Record<string, unknown> },
 ): TSubscribe<T> {
   const emitter = new EventEmitter();
   const results: ExecutionResult<T, unknown>[] = [];
@@ -948,7 +948,7 @@ describe('query operation', () => {
 
 describe('subscription operation', () => {
   it('should execute and "next" the emitted results until disposed', async () => {
-    const { url, ...server } = await startTServer({});
+    const { url, pong } = await startTServer({});
 
     const client = createClient({
       url,
@@ -959,16 +959,13 @@ describe('subscription operation', () => {
     const sub = tsubscribe(client, {
       query: PING_SUB,
     });
-    await server.waitForOperation();
-    console.log('onOperation');
 
-    server.pong();
+    pong();
+    pong();
 
     await sub.waitForNext((result) => {
       expect(result).toEqual({ data: { ping: 'pong' } });
     });
-
-    server.pong();
 
     await sub.waitForNext((result) => {
       expect(result).toEqual({ data: { ping: 'pong' } });
@@ -976,8 +973,8 @@ describe('subscription operation', () => {
 
     sub.dispose();
 
-    server.pong();
-    server.pong();
+    pong();
+    pong();
 
     await sub.waitForNext(() => {
       fail('Next shouldnt have been called');
@@ -1285,13 +1282,11 @@ describe('lazy', () => {
     }, 10);
 
     const sub1 = tsubscribe(client, {
-      operationName: 'PingPlease',
       query: PING_SUB,
     });
     await server.waitForOperation();
 
     const sub2 = tsubscribe(client, {
-      operationName: 'Pong',
       query: PING_SUB,
       variables: { key: '1' },
     });

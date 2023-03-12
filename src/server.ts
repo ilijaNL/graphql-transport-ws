@@ -24,14 +24,18 @@ import {
 import { isAsyncGenerator, isObject } from './utils';
 
 /** @category Server */
-export type SubscribeResult = {
+export interface Subscription {
   /**
-   * Promise which resolves when subscription is completed.
-   * Can be resolved with an ErrorMessage
+   * Resolves when the subscription is done or with an ErrorMessage when subscription has an error when starting
    */
-  waitToResolve: Promise<ErrorMessage | void>;
-  cancel: () => void;
-};
+  start(
+    emit: (message: NextMessage) => Promise<void>,
+  ): Promise<ErrorMessage | void>;
+  /**
+   * Stops this subscription
+   */
+  stop(): void;
+}
 
 /** @category Server */
 export interface ServerOptions<
@@ -39,13 +43,12 @@ export interface ServerOptions<
   E = unknown,
 > {
   /**
-   * Get the subscribe function.
+   * Get subscription
    */
-  subscribe: (props: {
+  getSubscription: (props: {
     ctx: Context<P, E>;
     message: SubscribeMessage;
-    emit: (message: NextMessage) => Promise<void>;
-  }) => SubscribeResult;
+  }) => Subscription;
   /**
    * The amount of time for which the server will wait
    * for `ConnectionInit` message.
@@ -301,7 +304,7 @@ export interface Context<
    * a reservation, meaning - the operation resolves to a single result or is still
    * pending/being prepared.
    */
-  readonly subscriptions: Record<ID, SubscribeResult | null>;
+  readonly subscriptions: Record<ID, Subscription | null>;
   /**
    * An extra field where you can store your own context values
    * to pass between callbacks.
@@ -313,7 +316,7 @@ class SubscriptionConnection<
   P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
   E = unknown,
 > {
-  private readonly subscriptions = new Map<ID, SubscribeResult | null>();
+  private readonly subscriptions = new Map<ID, Subscription | null>();
   private ctx: Context<P, E>;
   private connectionInitWait: NodeJS.Timeout | null = null;
   private closed = false;
@@ -356,7 +359,7 @@ class SubscriptionConnection<
     if (this.connectionInitWait) clearTimeout(this.connectionInitWait);
     for (const sub of this.subscriptions.values()) {
       if (sub) {
-        sub.cancel();
+        sub.stop();
       }
     }
 
@@ -525,17 +528,16 @@ class SubscriptionConnection<
 
     this.subscriptions.set(id, null);
 
-    const emit = (message: NextMessage) => this._send(id, message);
-
-    const sub = this.serverOptions.subscribe({
+    const sub = this.serverOptions.getSubscription({
       message: msg,
       ctx: this.ctx,
-      emit,
     });
 
     this.subscriptions.set(id, sub);
 
-    const error = await sub.waitToResolve;
+    const error = await sub.start((message: NextMessage) =>
+      this._send(id, message),
+    );
     // resolved with error, just report and return
     if (error) {
       return await this._send(id, error);
@@ -549,7 +551,7 @@ class SubscriptionConnection<
   private _handleComplete(id: string) {
     const sub = this.subscriptions.get(id);
     if (sub) {
-      sub.cancel();
+      sub.stop();
     }
     this.subscriptions.delete(id);
   }

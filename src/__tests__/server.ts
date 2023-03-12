@@ -6,6 +6,7 @@ import {
   parseMessage,
   stringifyMessage,
   ErrorMessage,
+  NextMessage,
 } from '../common';
 import { GET_VALUE_QUERY, PING_SUB, simpleSubscribe } from './fixtures/simple';
 import { createTClient, startWSTServer as startTServer } from './utils';
@@ -335,10 +336,10 @@ describe('Ping/Pong', () => {
     const payload = { not: 'relevant' };
 
     const closed = makeServer({
-      subscribe() {
+      getSubscription() {
         return {
-          waitToResolve: Promise.resolve(),
-          cancel() {
+          start: () => Promise.resolve(),
+          stop() {
             //
           },
         };
@@ -370,10 +371,10 @@ describe('Ping/Pong', () => {
     const payload = { not: 'relevant' };
 
     const closed = makeServer({
-      subscribe() {
+      getSubscription() {
         return {
-          waitToResolve: Promise.resolve(),
-          cancel() {
+          start: () => Promise.resolve(),
+          stop() {
             //
           },
         };
@@ -524,7 +525,7 @@ describe('Subscribe', () => {
 
   it('should execute the live query, "next" multiple results and then "complete"', async () => {
     const { url } = await startTServer({
-      subscribe: ({ emit }) => {
+      getSubscription: () => {
         async function* gen() {
           for (const value of ['Hi', 'Hello', 'Sup']) {
             yield {
@@ -535,7 +536,7 @@ describe('Subscribe', () => {
 
         const generator = gen();
 
-        async function run() {
+        async function run(emit: (msg: NextMessage) => Promise<void>) {
           for await (const res of generator) {
             emit({
               id: '1',
@@ -546,8 +547,8 @@ describe('Subscribe', () => {
         }
 
         return {
-          waitToResolve: run(),
-          cancel() {
+          start: run,
+          stop() {
             generator.return(undefined);
           },
         };
@@ -618,12 +619,11 @@ describe('Subscribe', () => {
       type: MessageType.Error,
     };
     const { url } = await startTServer({
-      subscribe() {
+      getSubscription() {
         return {
-          waitToResolve: new Promise((resolve) =>
-            setTimeout(() => resolve(error), 10),
-          ),
-          cancel() {
+          start: () =>
+            new Promise((resolve) => setTimeout(() => resolve(error), 10)),
+          stop() {
             //
           },
         };
@@ -663,7 +663,7 @@ describe('Subscribe', () => {
 
   it('should execute the subscription and "next" the published payload', async () => {
     const { url } = await startTServer({
-      subscribe: simpleSubscribe,
+      getSubscription: simpleSubscribe,
     });
 
     const client = await createTClient(url);
@@ -796,12 +796,13 @@ describe('Subscribe', () => {
 
   it('should close the socket on duplicate operation requests even if one is still preparing', async () => {
     const { url } = await startTServer({
-      subscribe: () => {
+      getSubscription: () => {
         return {
-          waitToResolve: new Promise(() => {
-            /* i never resolve, the subscription will be preparing forever */
-          }),
-          cancel() {
+          start: () =>
+            new Promise(() => {
+              /* i never resolve, the subscription will be preparing forever */
+            }),
+          stop() {
             /* */
           },
         };
@@ -931,14 +932,14 @@ describe('Subscribe', () => {
   it('should respect completed subscriptions even if subscribe operation stalls', async () => {
     let continueSubscribe: (() => void) | undefined = undefined;
     const server = await startTServer({
-      subscribe: () => {
+      getSubscription: () => {
         async function run() {
           await new Promise<void>((resolve) => (continueSubscribe = resolve));
         }
 
         return {
-          waitToResolve: run(),
-          cancel() {
+          start: run,
+          stop() {
             //
           },
         };
@@ -1003,11 +1004,11 @@ describe('Subscribe', () => {
     let currCtx: Context;
     makeServer({
       connectionInitWaitTimeout: 0, // defaults to 3 seconds
-      subscribe: ({ ctx }) => {
+      getSubscription: ({ ctx }) => {
         currCtx = ctx;
         return {
-          waitToResolve: Promise.reject(),
-          cancel() {
+          start: () => Promise.reject(),
+          stop() {
             //
           },
         };
