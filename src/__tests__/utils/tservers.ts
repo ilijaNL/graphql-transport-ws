@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import http from 'http';
-import { schema, pong } from '../fixtures/simple';
+import { pong, simpleSubscribe } from '../fixtures/simple';
 import { ServerOptions, Context } from '../../server';
 
 import ws, { WebSocketServer } from 'ws';
@@ -164,24 +164,19 @@ export async function startWSTServer(
     pendingCompletes = 0;
   const server = useWSServer(
     {
-      schema,
       ...options,
+      createSubscription: (props) => {
+        const sub = (options.createSubscription ?? simpleSubscribe)(props);
+        pendingOperations++;
+        emitter.emit('operation');
+
+        return sub;
+      },
       onConnect: async (...args) => {
         pendingConnections.push(args[0]);
         const permitted = await options?.onConnect?.(...args);
         emitter.emit('conn');
         return permitted;
-      },
-      onOperation: async (ctx, msg, args, result) => {
-        pendingOperations++;
-        const maybeResult = await options?.onOperation?.(
-          ctx,
-          msg,
-          args,
-          result,
-        );
-        emitter.emit('operation');
-        return maybeResult;
       },
       onComplete: async (...args) => {
         pendingCompletes++;
@@ -355,7 +350,6 @@ export async function startUWSTServer(
           path,
           makeUWSBehavior(
             {
-              schema,
               ...options,
               onConnect: async (...args) => {
                 pendingConnections.push(args[0]);
@@ -363,16 +357,14 @@ export async function startUWSTServer(
                 emitter.emit('conn');
                 return permitted;
               },
-              onOperation: async (ctx, msg, args, result) => {
-                pendingOperations++;
-                const maybeResult = await options?.onOperation?.(
-                  ctx,
-                  msg,
-                  args,
-                  result,
+              createSubscription: (props) => {
+                const sub = (options.createSubscription ?? simpleSubscribe)(
+                  props,
                 );
+                pendingOperations++;
                 emitter.emit('operation');
-                return maybeResult;
+
+                return sub;
               },
               onComplete: async (...args) => {
                 pendingCompletes++;
@@ -514,7 +506,6 @@ export async function startFastifyWSTServer(
 
       makeFastifyHandler(
         {
-          schema,
           ...options,
           onConnect: async (...args) => {
             pendingConnections.push(args[0]);
@@ -522,16 +513,12 @@ export async function startFastifyWSTServer(
             emitter.emit('conn');
             return permitted;
           },
-          onOperation: async (ctx, msg, args, result) => {
+          createSubscription: (props) => {
+            const sub = (options.createSubscription ?? simpleSubscribe)(props);
             pendingOperations++;
-            const maybeResult = await options?.onOperation?.(
-              ctx,
-              msg,
-              args,
-              result,
-            );
             emitter.emit('operation');
-            return maybeResult;
+
+            return sub;
           },
           onComplete: async (...args) => {
             pendingCompletes++;

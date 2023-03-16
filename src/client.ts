@@ -4,7 +4,6 @@
  *
  */
 
-import { ExecutionResult } from 'graphql';
 import {
   GRAPHQL_TRANSPORT_WS_PROTOCOL,
   CloseCode,
@@ -19,9 +18,10 @@ import {
   PongMessage,
   parseMessage,
   stringifyMessage,
-  SubscribePayload,
   JSONMessageReviver,
   JSONMessageReplacer,
+  ExecutionResult,
+  SubscribeMessage,
 } from './common';
 import { isObject, limitCloseReason } from './utils';
 
@@ -199,6 +199,7 @@ export type EventListener<E extends Event> = E extends EventConnecting
  */
 export interface ClientOptions<
   P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
+  SubscribePayload = Record<string, unknown>,
 > {
   /**
    * URL of the GraphQL over WebSocket Protocol compliant server to connect.
@@ -426,7 +427,8 @@ export interface ClientOptions<
 }
 
 /** @category Client */
-export interface Client extends Disposable {
+export interface Client<SubscribePayload = Record<string, unknown>>
+  extends Disposable {
   /**
    * Listens on the client which dispatches events about the socket state.
    */
@@ -436,9 +438,13 @@ export interface Client extends Disposable {
    * uses the `sink` to emit received data or errors. Returns a _cleanup_
    * function used for dropping the subscription and cleaning stuff up.
    */
-  subscribe<Data = Record<string, unknown>, Extensions = unknown>(
+  subscribe<
+    Data = Record<string, unknown>,
+    Extensions = unknown,
+    Err extends Error = Error,
+  >(
     payload: SubscribePayload,
-    sink: Sink<ExecutionResult<Data, Extensions>>,
+    sink: Sink<ExecutionResult<Data, Extensions, Err>>,
   ): () => void;
   /**
    * Terminates the WebSocket abruptly and immediately.
@@ -455,6 +461,14 @@ export interface Client extends Disposable {
   terminate(): void;
 }
 
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0,
+      v = c == 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 /**
  * Creates a disposable GraphQL over WebSocket client.
  *
@@ -462,7 +476,8 @@ export interface Client extends Disposable {
  */
 export function createClient<
   P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
->(options: ClientOptions<P>): Client {
+  SubscribePayload = Record<string, unknown>,
+>(options: ClientOptions<P, SubscribePayload>): Client<SubscribePayload> {
   const {
     url,
     connectionParams,
@@ -498,13 +513,6 @@ export function createClient<
      *
      * Reference: https://gist.github.com/jed/982883
      */
-    generateID = function generateUUID() {
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0,
-          v = c == 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      });
-    },
     jsonMessageReplacer: replacer,
     jsonMessageReviver: reviver,
   } = options;
@@ -879,7 +887,7 @@ export function createClient<
   return {
     on: emitter.on,
     subscribe(payload, sink) {
-      const id = generateID(payload);
+      const id = options.generateID?.(payload) ?? generateUUID();
 
       let done = false,
         errored = false,
@@ -920,13 +928,16 @@ export function createClient<
               }
             });
 
+            const subMessage: SubscribeMessage<SubscribePayload> = {
+              id,
+              type: MessageType.Subscribe,
+              payload,
+            };
+
             socket.send(
               stringifyMessage<MessageType.Subscribe>(
-                {
-                  id,
-                  type: MessageType.Subscribe,
-                  payload,
-                },
+                // need to cast to make typescript happy
+                subMessage as SubscribeMessage,
                 replacer,
               ),
             );

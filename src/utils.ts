@@ -1,10 +1,3 @@
-/**
- *
- * utils
- *
- */
-import { GraphQLError } from 'graphql';
-
 /** @private */
 export function extendedTypeof(
   val: unknown,
@@ -51,17 +44,6 @@ export function isAsyncGenerator<T = unknown>(
     // for lazy ones, we only need the return anyway
     // typeof val.throw === 'function' &&
     // typeof val.next === 'function'
-  );
-}
-
-/** @private */
-export function areGraphQLErrors(obj: unknown): obj is readonly GraphQLError[] {
-  return (
-    Array.isArray(obj) &&
-    // must be at least one error
-    obj.length > 0 &&
-    // error has at least a message
-    obj.every((ob) => 'message' in ob)
   );
 }
 
