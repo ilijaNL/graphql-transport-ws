@@ -1447,6 +1447,52 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ilijanl/graphql-ws-graphqless@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@ilijanl/graphql-ws-graphqless@workspace:."
+  dependencies:
+    "@babel/core": ^7.21.0
+    "@babel/plugin-proposal-class-properties": ^7.18.6
+    "@babel/plugin-proposal-nullish-coalescing-operator": ^7.18.6
+    "@babel/plugin-proposal-object-rest-spread": ^7.20.7
+    "@babel/plugin-proposal-optional-chaining": ^7.21.0
+    "@babel/preset-env": ^7.20.2
+    "@babel/preset-typescript": ^7.21.0
+    "@fastify/websocket": ^7.1.2
+    "@rollup/plugin-terser": ^0.4.0
+    "@rollup/plugin-typescript": ^11.0.0
+    "@semantic-release/changelog": ^6.0.2
+    "@semantic-release/git": ^10.0.1
+    "@types/eslint": ^8.21.1
+    "@types/glob": ^8.1.0
+    "@types/jest": ^29.4.0
+    "@types/ws": ^8.5.4
+    "@typescript-eslint/eslint-plugin": ^5.54.0
+    "@typescript-eslint/parser": ^5.54.0
+    babel-jest: ^29.4.3
+    eslint: ^8.35.0
+    eslint-config-prettier: ^8.6.0
+    fastify: ^4.14.0
+    fastify-websocket: 4.2.2
+    glob: ^9.2.1
+    jest: ^29.4.3
+    jest-environment-jsdom: ^29.4.3
+    jest-jasmine2: ^29.4.3
+    prettier: ^2.8.4
+    replacestream: ^4.0.3
+    rollup: ^3.18.0
+    semantic-release: ^20.1.1
+    subscriptions-transport-ws: ^0.11.0
+    tslib: ^2.5.0
+    typedoc: ^0.23.26
+    typedoc-plugin-markdown: ^3.14.0
+    typescript: ^4.9.5
+    uWebSockets.js: "uNetworking/uWebSockets.js#v20.19.0"
+    ws: 8.12.0
+    ws7: "npm:ws@^7.5.9"
+  languageName: unknown
+  linkType: soft
+
 "@isaacs/string-locale-compare@npm:^1.1.0":
   version: 1.1.0
   resolution: "@isaacs/string-locale-compare@npm:1.1.0"
@@ -4878,62 +4924,6 @@ __metadata:
   version: 1.0.4
   resolution: "grapheme-splitter@npm:1.0.4"
   checksum: 0c22ec54dee1b05cd480f78cf14f732cb5b108edc073572c4ec205df4cd63f30f8db8025afc5debc8835a8ddeacf648a1c7992fe3dcd6ad38f9a476d84906620
-  languageName: node
-  linkType: hard
-
-"graphql-ws@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "graphql-ws@workspace:."
-  dependencies:
-    "@babel/core": ^7.21.0
-    "@babel/plugin-proposal-class-properties": ^7.18.6
-    "@babel/plugin-proposal-nullish-coalescing-operator": ^7.18.6
-    "@babel/plugin-proposal-object-rest-spread": ^7.20.7
-    "@babel/plugin-proposal-optional-chaining": ^7.21.0
-    "@babel/preset-env": ^7.20.2
-    "@babel/preset-typescript": ^7.21.0
-    "@fastify/websocket": ^7.1.2
-    "@rollup/plugin-terser": ^0.4.0
-    "@rollup/plugin-typescript": ^11.0.0
-    "@semantic-release/changelog": ^6.0.2
-    "@semantic-release/git": ^10.0.1
-    "@types/eslint": ^8.21.1
-    "@types/glob": ^8.1.0
-    "@types/jest": ^29.4.0
-    "@types/ws": ^8.5.4
-    "@typescript-eslint/eslint-plugin": ^5.54.0
-    "@typescript-eslint/parser": ^5.54.0
-    babel-jest: ^29.4.3
-    eslint: ^8.35.0
-    eslint-config-prettier: ^8.6.0
-    fastify: ^4.14.0
-    fastify-websocket: 4.2.2
-    glob: ^9.2.1
-    graphql: ^16.6.0
-    jest: ^29.4.3
-    jest-environment-jsdom: ^29.4.3
-    jest-jasmine2: ^29.4.3
-    prettier: ^2.8.4
-    replacestream: ^4.0.3
-    rollup: ^3.18.0
-    semantic-release: ^20.1.1
-    subscriptions-transport-ws: ^0.11.0
-    tslib: ^2.5.0
-    typedoc: ^0.23.26
-    typedoc-plugin-markdown: ^3.14.0
-    typescript: ^4.9.5
-    uWebSockets.js: "uNetworking/uWebSockets.js#v20.19.0"
-    ws: 8.12.0
-    ws7: "npm:ws@^7.5.9"
-  peerDependencies:
-    graphql: ">=0.11 <=16"
-  languageName: unknown
-  linkType: soft
-
-"graphql@npm:^16.6.0":
-  version: 16.6.0
-  resolution: "graphql@npm:16.6.0"
-  checksum: bf1d9e3c1938ce3c1a81e909bd3ead1ae4707c577f91cff1ca2eca474bfbc7873d5d7b942e1e9777ff5a8304421dba57a4b76d7a29eb19de8711cb70e3c2415e
   languageName: node
   linkType: hard
 

@@ -1,12 +1,7 @@
 import type * as http from 'http';
 import type * as ws from 'ws';
 import { handleProtocols, makeServer, ServerOptions } from '../server';
-import {
-  DEPRECATED_GRAPHQL_WS_PROTOCOL,
-  ConnectionInitMessage,
-  CloseCode,
-  Disposable,
-} from '../common';
+import { ConnectionInitMessage, CloseCode, Disposable } from '../common';
 import { limitCloseReason } from '../utils';
 
 // for nicer documentation
@@ -166,15 +161,7 @@ export function useServer<
     socket.once('close', (code, reason) => {
       if (pongWait) clearTimeout(pongWait);
       if (pingInterval) clearInterval(pingInterval);
-      if (
-        !isProd &&
-        code === CloseCode.SubprotocolNotAcceptable &&
-        socket.protocol === DEPRECATED_GRAPHQL_WS_PROTOCOL
-      )
-        console.warn(
-          `Client provided the unsupported and deprecated subprotocol "${socket.protocol}" used by subscriptions-transport-ws.` +
-            'Please see https://www.apollographql.com/docs/apollo-server/data/subscriptions/#switching-from-subscriptions-transport-ws.',
-        );
+
       closed(code, String(reason));
     });
   });

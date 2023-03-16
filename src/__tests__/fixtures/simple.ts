@@ -1,10 +1,10 @@
 import {
-  GraphQLSchema,
-  GraphQLObjectType,
-  GraphQLString,
-  GraphQLNonNull,
-  GraphQLSchemaConfig,
-} from 'graphql';
+  ErrorMessage,
+  MessageType,
+  NextMessage,
+  SubscribeMessage,
+} from '../../common';
+import { ServerOptions } from '../../server';
 
 // use for dispatching a `pong` to the `ping` subscription
 const pendingPongs: Record<string, number | undefined> = {};
@@ -18,90 +18,159 @@ export function pong(key = 'global'): void {
   }
 }
 
-export const schemaConfig: GraphQLSchemaConfig = {
-  query: new GraphQLObjectType({
-    name: 'Query',
-    fields: {
-      getValue: {
-        type: new GraphQLNonNull(GraphQLString),
-        resolve: () => 'value',
-      },
+export const emptySubscribe: ServerOptions['createSubscription'] = () => {
+  return {
+    start: () => Promise.resolve(),
+    stop() {
+      //
     },
-  }),
-  subscription: new GraphQLObjectType({
-    name: 'Subscription',
-    fields: {
-      greetings: {
-        type: new GraphQLNonNull(GraphQLString),
-        subscribe: async function* () {
-          for (const hi of ['Hi', 'Bonjour', 'Hola', 'Ciao', 'Zdravo']) {
-            yield { greetings: hi };
-          }
-        },
-      },
-      ping: {
-        type: new GraphQLNonNull(GraphQLString),
-        args: {
-          key: {
-            type: GraphQLString,
-          },
-        },
-        subscribe: function (_src, args) {
-          const key = args.key ? args.key : 'global';
-          return {
-            [Symbol.asyncIterator]() {
-              return this;
-            },
-            async next() {
-              if ((pendingPongs[key] ?? 0) > 0) {
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                pendingPongs[key]!--;
-                return { value: { ping: 'pong' } };
-              }
-              if (
-                await new Promise((resolve) => (pongListeners[key] = resolve))
-              )
-                return { done: true };
-              return { value: { ping: 'pong' } };
-            },
-            async return() {
-              pongListeners[key]?.(true);
-              delete pongListeners[key];
-              return { done: true };
-            },
-            async throw() {
-              throw new Error('Ping no gusta');
-            },
-          };
-        },
-      },
-      lateReturn: {
-        type: new GraphQLNonNull(GraphQLString),
-        subscribe() {
-          let completed = () => {
-            // noop
-          };
-          return {
-            [Symbol.asyncIterator]() {
-              return this;
-            },
-            async next() {
-              await new Promise<void>((resolve) => (completed = resolve));
-              return { done: true };
-            },
-            return() {
-              completed();
-
-              // resolve return in next tick so that the generator loop breaks first
-              return new Promise((resolve) =>
-                setTimeout(() => resolve({ done: true }), 0),
-              );
-            },
-          };
-        },
-      },
-    },
-  }),
+  };
 };
 
-export const schema = new GraphQLSchema(schemaConfig);
+export const GET_VALUE_QUERY = 'query { getValue }';
+export const PING_SUB = 'subscription { ping }';
+export const LATE_SUB = 'subscription { lateReturn }';
+export const GREETINGS = 'subscription { greetings }';
+
+async function getValue(
+  message: SubscribeMessage,
+  emit: (message: NextMessage) => Promise<void>,
+) {
+  await emit({
+    id: message.id,
+    payload: { data: { getValue: 'value' } },
+    type: MessageType.Next,
+  });
+}
+
+export const simpleSubscribe: ServerOptions['createSubscription'] = ({
+  message,
+}) => {
+  if (message.payload.query === GET_VALUE_QUERY) {
+    return {
+      start(emit) {
+        return getValue(message, emit);
+      },
+      stop() {
+        //
+      },
+    };
+  }
+
+  if (message.payload.query === 'subscription { greetings }') {
+    const iter = (async function* () {
+      for (const hi of ['Hi', 'Bonjour', 'Hola', 'Ciao', 'Zdravo']) {
+        yield { greetings: hi };
+      }
+    })();
+
+    return {
+      start: async function (emit) {
+        for await (const l of iter) {
+          await emit({
+            id: message.id,
+            payload: { data: { greetings: l } },
+            type: MessageType.Next,
+          });
+        }
+      },
+      stop: () => {
+        iter.return(undefined);
+      },
+    };
+  }
+
+  if (message.payload.query === PING_SUB) {
+    const vars = message.payload.variables as Record<string, string>;
+    const key = vars?.key !== undefined ? vars.key : 'global';
+
+    const iterator: AsyncIterableIterator<unknown> = {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      async next() {
+        if ((pendingPongs[key] ?? 0) > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          pendingPongs[key]!--;
+          return { value: 'pong' };
+        }
+        if (await new Promise((resolve) => (pongListeners[key] = resolve)))
+          return { done: true, value: null };
+        return { value: 'pong' };
+      },
+      async return() {
+        pongListeners[key]?.(true);
+        delete pongListeners[key];
+        return { done: true, value: null };
+      },
+      async throw() {
+        throw new Error('Ping no gusta');
+      },
+    };
+
+    return {
+      start: async function (emit) {
+        for await (const l of iterator) {
+          await emit({
+            id: message.id,
+            payload: { data: { ping: l } },
+            type: MessageType.Next,
+          });
+        }
+      },
+      stop: () => {
+        iterator.return?.(undefined);
+      },
+    };
+  }
+
+  if (message.payload.query === LATE_SUB) {
+    let completed = () => {
+      // noop
+    };
+    const iterator = {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      async next() {
+        await new Promise<void>((resolve) => (completed = resolve));
+        return { done: true, value: null };
+      },
+      return(_value: unknown) {
+        completed();
+
+        // resolve return in next tick so that the generator loop breaks first
+        return new Promise<{ done: true; value: null }>((resolve) =>
+          setTimeout(() => resolve({ done: true, value: null }), 0),
+        );
+      },
+    };
+
+    return {
+      start: async function (emit) {
+        for await (const l of iterator) {
+          await emit({
+            id: message.id,
+            payload: { data: { ping: l } },
+            type: MessageType.Next,
+          });
+        }
+      },
+      stop: () => {
+        iterator.return(undefined);
+      },
+    };
+  }
+
+  return {
+    stop: () => {
+      //
+    },
+    start: () =>
+      Promise.resolve<ErrorMessage>({
+        id: message.id,
+        payload: [{ message: 'unknown', name: 'operation not known' }],
+        type: MessageType.Error,
+      }),
+  };
+};

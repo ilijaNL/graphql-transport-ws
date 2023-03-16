@@ -110,12 +110,7 @@ The server needs only keep track of IDs for as long as the subscription is activ
 interface SubscribeMessage {
   id: '<unique-operation-id>';
   type: 'subscribe';
-  payload: {
-    operationName?: string | null;
-    query: string;
-    variables?: Record<string, unknown> | null;
-    extensions?: Record<string, unknown> | null;
-  };
+  payload: <Your own type>;
 }
 ```
 
