@@ -18,7 +18,7 @@ export function pong(key = 'global'): void {
   }
 }
 
-export const emptySubscribe: ServerOptions['getSubscription'] = () => {
+export const emptySubscribe: ServerOptions['createSubscription'] = () => {
   return {
     start: () => Promise.resolve(),
     stop() {
@@ -43,7 +43,7 @@ async function getValue(
   });
 }
 
-export const simpleSubscribe: ServerOptions['getSubscription'] = ({
+export const simpleSubscribe: ServerOptions['createSubscription'] = ({
   message,
 }) => {
   if (message.payload.query === GET_VALUE_QUERY) {
