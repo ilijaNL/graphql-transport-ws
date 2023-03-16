@@ -1,3 +1,10 @@
+# [5.13.0](https://github.com/ilijaNL/graphql-ws/compare/v5.12.0...v5.13.0) (2023-03-16)
+
+
+### Features
+
+* Remove graphql dependency ([bc2465c](https://github.com/ilijaNL/graphql-ws/commit/bc2465cdd611729b881aa7cbee61f9c315be3a47))
+
 # 1.0.0 (2023-03-16)
 
 
