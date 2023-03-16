@@ -1,5 +1,5 @@
 {
-  "name": "graphql-ws",
+  "name": "@ilijanl/graphql-ws-graphqless",
   "version": "5.12.0",
   "description": "Coherent, zero-dependency, lazy, simple, based on graphql websocket protocol, compliant server and client",
   "keywords": [
@@ -16,12 +16,12 @@
     "fastify",
     "uwebsockets"
   ],
-  "author": "Denis Badurina <badurinadenis@gmail.com>",
+  "author": "Denis Badurina <badurinadenis@gmail.com> & ilijaNL",
   "license": "MIT",
-  "homepage": "https://github.com/enisdenjo/graphql-ws#readme",
+  "homepage": "https://github.com/ilijaNL/graphql-ws#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/enisdenjo/graphql-ws.git"
+    "url": "https://github.com/ilijaNL/graphql-ws.git"
   },
   "engines": {
     "node": ">=10"
