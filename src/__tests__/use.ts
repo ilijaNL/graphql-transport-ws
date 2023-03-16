@@ -227,7 +227,7 @@ for (const { tServer, skipUWS, startTServer } of tServers) {
 
       // subscribe
       server = await startTServer({
-        getSubscription: () => {
+        createSubscription: () => {
           throw error;
         },
       });
@@ -245,7 +245,7 @@ for (const { tServer, skipUWS, startTServer } of tServers) {
 
       // onError
       server = await startTServer({
-        getSubscription: simpleSubscribe,
+        createSubscription: simpleSubscribe,
         onError: async () => {
           throw error;
         },
@@ -255,7 +255,7 @@ for (const { tServer, skipUWS, startTServer } of tServers) {
 
       // onComplete
       server = await startTServer({
-        getSubscription: emptySubscribe,
+        createSubscription: emptySubscribe,
         onComplete: () => {
           throw error;
         },

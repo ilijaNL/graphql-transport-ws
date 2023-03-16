@@ -45,7 +45,7 @@ export interface ServerOptions<
   /**
    * Get subscription
    */
-  getSubscription: (props: {
+  createSubscription: (props: {
     ctx: Context<P, E>;
     message: SubscribeMessage;
   }) => Subscription;
@@ -528,7 +528,7 @@ class SubscriptionConnection<
 
     this.subscriptions.set(id, null);
 
-    const sub = this.serverOptions.getSubscription({
+    const sub = this.serverOptions.createSubscription({
       message: msg,
       ctx: this.ctx,
     });
@@ -593,7 +593,7 @@ export function makeServer<
       }
 
       const sc = new SubscriptionConnection(options, socket, extra);
-      return (code, reason) => sc.close(code, reason);
+      return sc.close.bind(sc);
     },
   };
 }
