@@ -8,7 +8,7 @@
 yarn add @ilijanl/graphql-ws-graphqless
 ```
 
-A fork of graphql-ws. This package is meant to be used for custom executions based on graphql-ws protocol. If used for graphql, go with original graphql-ws package.
+A fork of graphql-ws. This package is meant to be used for custom executions based on graphql-transport-ws protocol. If used for graphql, go with original graphql-ws package.
 
 All credits go to @enisdenjo
 
