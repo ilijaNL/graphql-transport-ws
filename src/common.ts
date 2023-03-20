@@ -240,49 +240,6 @@ export function validateMessage(val: unknown): Message {
         );
       }
 
-      if (typeof val.payload.query !== 'string') {
-        throw new Error(
-          `"${
-            val.type
-          }" message payload expects the 'query' property to be a string, but got ${extendedTypeof(
-            val.payload.query,
-          )}`,
-        );
-      }
-
-      if (val.payload.variables != null && !isObject(val.payload.variables)) {
-        throw new Error(
-          `"${
-            val.type
-          }" message payload expects the 'variables' property to be a an object or nullish or missing, but got ${extendedTypeof(
-            val.payload.variables,
-          )}`,
-        );
-      }
-
-      if (
-        val.payload.operationName != null &&
-        extendedTypeof(val.payload.operationName) !== 'string'
-      ) {
-        throw new Error(
-          `"${
-            val.type
-          }" message payload expects the 'operationName' property to be a string or nullish or missing, but got ${extendedTypeof(
-            val.payload.operationName,
-          )}`,
-        );
-      }
-
-      if (val.payload.extensions != null && !isObject(val.payload.extensions)) {
-        throw new Error(
-          `"${
-            val.type
-          }" message payload expects the 'extensions' property to be a an object or nullish or missing, but got ${extendedTypeof(
-            val.payload.extensions,
-          )}`,
-        );
-      }
-
       break;
     }
 

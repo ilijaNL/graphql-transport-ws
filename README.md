@@ -38,11 +38,7 @@ useServer(
       return {
         start: async function (emit) {
           for await (const l of iter) {
-            await emit({
-              id: message.id,
-              payload: { data: { greetings: l } },
-              type: MessageType.Next,
-            });
+            await emit({ data: { greetings: l } });
           }
         },
         stop: () => {
