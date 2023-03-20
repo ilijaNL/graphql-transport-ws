@@ -1,6 +1,6 @@
 {
   "name": "@ilijanl/graphql-ws-graphqless",
-  "version": "5.13.0",
+  "version": "5.14.0",
   "description": "Coherent, zero-dependency, lazy, simple, based on graphql websocket protocol, compliant server and client",
   "keywords": [
     "protocol",
