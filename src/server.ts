@@ -20,6 +20,7 @@ import {
   PingMessage,
   PongMessage,
   GRAPHQL_TRANSPORT_WS_PROTOCOL,
+  ExecutionResult,
 } from './common';
 import { isAsyncGenerator, isObject } from './utils';
 
@@ -29,8 +30,8 @@ export interface Subscription {
    * Resolves when the subscription is done or with an ErrorMessage when subscription has an error when starting
    */
   start(
-    emit: (message: NextMessage) => Promise<void>,
-  ): Promise<ErrorMessage | void>;
+    emit: (message: ExecutionResult) => Promise<void>,
+  ): Promise<ErrorMessage['payload'] | void>;
   /**
    * Stops this subscription
    */
@@ -535,12 +536,16 @@ class SubscriptionConnection<
 
     this.subscriptions.set(id, sub);
 
-    const error = await sub.start((message: NextMessage) =>
-      this._send(id, message),
+    const error = await sub.start((result: ExecutionResult) =>
+      this._send(id, { id: id, payload: result, type: MessageType.Next }),
     );
     // resolved with error, just report and return
     if (error) {
-      return await this._send(id, error);
+      return await this._send(id, {
+        id,
+        payload: error,
+        type: MessageType.Error,
+      });
     }
 
     await this._send(id, { type: MessageType.Complete, id: id });

@@ -1,9 +1,4 @@
-import {
-  ErrorMessage,
-  MessageType,
-  NextMessage,
-  SubscribeMessage,
-} from '../../common';
+import { ErrorMessage, NextMessage } from '../../common';
 import { ServerOptions } from '../../server';
 
 // use for dispatching a `pong` to the `ping` subscription
@@ -33,14 +28,9 @@ export const LATE_SUB = 'subscription { lateReturn }';
 export const GREETINGS = 'subscription { greetings }';
 
 async function getValue(
-  message: SubscribeMessage,
-  emit: (message: NextMessage) => Promise<void>,
+  emit: (message: NextMessage['payload']) => Promise<void>,
 ) {
-  await emit({
-    id: message.id,
-    payload: { data: { getValue: 'value' } },
-    type: MessageType.Next,
-  });
+  await emit({ data: { getValue: 'value' } });
 }
 
 export const simpleSubscribe: ServerOptions['createSubscription'] = ({
@@ -49,7 +39,7 @@ export const simpleSubscribe: ServerOptions['createSubscription'] = ({
   if (message.payload.query === GET_VALUE_QUERY) {
     return {
       start(emit) {
-        return getValue(message, emit);
+        return getValue(emit);
       },
       stop() {
         //
@@ -67,11 +57,7 @@ export const simpleSubscribe: ServerOptions['createSubscription'] = ({
     return {
       start: async function (emit) {
         for await (const l of iter) {
-          await emit({
-            id: message.id,
-            payload: { data: { greetings: l } },
-            type: MessageType.Next,
-          });
+          await emit({ data: { greetings: l } });
         }
       },
       stop: () => {
@@ -111,11 +97,7 @@ export const simpleSubscribe: ServerOptions['createSubscription'] = ({
     return {
       start: async function (emit) {
         for await (const l of iterator) {
-          await emit({
-            id: message.id,
-            payload: { data: { ping: l } },
-            type: MessageType.Next,
-          });
+          await emit({ data: { ping: l } });
         }
       },
       stop: () => {
@@ -149,11 +131,7 @@ export const simpleSubscribe: ServerOptions['createSubscription'] = ({
     return {
       start: async function (emit) {
         for await (const l of iterator) {
-          await emit({
-            id: message.id,
-            payload: { data: { ping: l } },
-            type: MessageType.Next,
-          });
+          await emit({ data: { ping: l } });
         }
       },
       stop: () => {
@@ -167,10 +145,8 @@ export const simpleSubscribe: ServerOptions['createSubscription'] = ({
       //
     },
     start: () =>
-      Promise.resolve<ErrorMessage>({
-        id: message.id,
-        payload: [{ message: 'unknown', name: 'operation not known' }],
-        type: MessageType.Error,
-      }),
+      Promise.resolve<ErrorMessage['payload']>([
+        { message: 'unknown', name: 'operation not known' },
+      ]),
   };
 };

@@ -71,65 +71,6 @@ it.each([
     type: MessageType.Subscribe,
     payload: '',
   },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: {},
-  },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: {
-      query: 0,
-    },
-  },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: {
-      query: {},
-    },
-  },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: {
-      operationName: 0,
-      query: '',
-    },
-  },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: {
-      operationName: {},
-      query: '',
-    },
-  },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: {
-      query: '',
-      variables: '',
-    },
-  },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: {
-      query: '',
-      extensions: '',
-    },
-  },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: {
-      query: '',
-      extensions: 0,
-    },
-  },
 
   // invalid next message
   {

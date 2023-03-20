@@ -6,7 +6,7 @@ import {
   parseMessage,
   stringifyMessage,
   ErrorMessage,
-  NextMessage,
+  ExecutionResult,
 } from '../common';
 import { GET_VALUE_QUERY, PING_SUB, simpleSubscribe } from './fixtures/simple';
 import { createTClient, startWSTServer as startTServer } from './utils';
@@ -536,13 +536,9 @@ describe('Subscribe', () => {
 
         const generator = gen();
 
-        async function run(emit: (msg: NextMessage) => Promise<void>) {
+        async function run(emit: (msg: ExecutionResult) => Promise<void>) {
           for await (const res of generator) {
-            emit({
-              id: '1',
-              payload: { data: res },
-              type: MessageType.Next,
-            });
+            emit({ data: res });
           }
         }
 
@@ -610,14 +606,10 @@ describe('Subscribe', () => {
   });
 
   it('should execute the query and "error"', async () => {
-    const error: ErrorMessage = {
-      id: '1',
-      payload: [
-        { name: 't', message: 'Report' },
-        { name: 't', message: 'Me' },
-      ],
-      type: MessageType.Error,
-    };
+    const error: ErrorMessage['payload'] = [
+      { name: 't', message: 'Report' },
+      { name: 't', message: 'Me' },
+    ];
     const { url } = await startTServer({
       createSubscription() {
         return {
@@ -653,7 +645,7 @@ describe('Subscribe', () => {
     });
 
     await client.waitForMessage(({ data }) => {
-      expect(parseMessage(data)).toEqual(error);
+      expect((parseMessage(data) as ErrorMessage).payload).toEqual(error);
     });
 
     await client.waitForClose(() => {
