@@ -18,10 +18,10 @@
   ],
   "author": "Denis Badurina <badurinadenis@gmail.com> & ilijaNL",
   "license": "MIT",
-  "homepage": "https://github.com/ilijaNL/graphql-ws#readme",
+  "homepage": "https://github.com/ilijaNL/graphql-transport-ws#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ilijaNL/graphql-ws.git"
+    "url": "https://github.com/ilijaNL/graphql-transport-ws.git"
   },
   "engines": {
     "node": ">=10"
