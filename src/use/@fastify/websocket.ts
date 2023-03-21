@@ -1,7 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import type * as fastifyWebsocket from '@fastify/websocket';
 import { handleProtocols, makeServer, ServerOptions } from '../../server';
-import { ConnectionInitMessage, CloseCode } from '../../common';
+import { CloseCode, GenericProtocol } from '../../common';
 import { limitCloseReason } from '../../utils';
 
 /**
@@ -29,7 +29,7 @@ export interface Extra {
  * @category Server/@fastify/websocket
  */
 export function makeHandler<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
+  P extends GenericProtocol = GenericProtocol,
   E extends Record<PropertyKey, unknown> = Record<PropertyKey, never>,
 >(
   options: ServerOptions<P, Extra & Partial<E>>,

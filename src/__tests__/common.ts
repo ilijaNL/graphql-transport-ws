@@ -61,16 +61,6 @@ it.each([
     id: 'id',
     type: MessageType.Subscribe,
   },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: [],
-  },
-  {
-    id: 'id',
-    type: MessageType.Subscribe,
-    payload: '',
-  },
 
   // invalid next message
   {
@@ -88,12 +78,6 @@ it.each([
     id: 'id',
     type: MessageType.Next,
   },
-  {
-    id: 'id',
-    type: MessageType.Next,
-    payload: '',
-  },
-
   // invalid error message
   {
     type: MessageType.Error,
@@ -105,26 +89,6 @@ it.each([
   {
     id: 'id',
     type: MessageType.Error,
-  },
-  {
-    id: 'id',
-    type: MessageType.Error,
-    payload: {},
-  },
-  {
-    id: 'id',
-    type: MessageType.Error,
-    payload: '',
-  },
-  {
-    id: 'id',
-    type: MessageType.Error,
-    payload: [],
-  },
-  {
-    id: 'id',
-    type: MessageType.Error,
-    payload: [{ iam: 'invalid' }],
   },
 
   // invalid complete message

@@ -7,13 +7,18 @@ import { EventEmitter } from 'events';
 import { createClient, Client, EventListener } from '../client';
 import {
   CloseCode,
-  ExecutionResult,
+  GenericProtocol,
   MessageType,
   parseMessage,
   stringifyMessage,
 } from '../common';
 import { startRawServer, startWSTServer as startTServer } from './utils';
-import { GET_VALUE_QUERY, GREETINGS, PING_SUB } from './fixtures/simple';
+import {
+  GET_VALUE_QUERY,
+  GraphqlProtocol,
+  GREETINGS,
+  PING_SUB,
+} from './fixtures/simple';
 
 // silence console.error calls for nicer tests overview
 const consoleError = console.error;
@@ -39,10 +44,7 @@ function noop(): void {
 }
 
 interface TSubscribe<T> {
-  waitForNext: (
-    test?: (value: ExecutionResult<T, unknown>) => void,
-    expire?: number,
-  ) => Promise<void>;
+  waitForNext: (test?: (value: T) => void, expire?: number) => Promise<void>;
   waitForError: (
     test?: (error: unknown) => void,
     expire?: number,
@@ -51,15 +53,15 @@ interface TSubscribe<T> {
   dispose: () => void;
 }
 
-function tsubscribe<T = unknown>(
-  client: Client<{ query: string; variables?: Record<string, unknown> }>,
+function tsubscribe<Prot extends GenericProtocol>(
+  client: Client<Prot>,
   payload: { query: string; variables?: Record<string, unknown> },
-): TSubscribe<T> {
+): TSubscribe<Prot['ExecutionResult']> {
   const emitter = new EventEmitter();
-  const results: ExecutionResult<T, unknown>[] = [];
+  const results: Prot['ExecutionResult'][] = [];
   let error: unknown,
     completed = false;
-  const dispose = client.subscribe<T>(payload, {
+  const dispose = client.subscribe<Prot['ExecutionResult']>(payload, {
     next: (value) => {
       results.push(value);
       emitter.emit('next');
@@ -545,9 +547,8 @@ it('should report close error even if complete message followed', async (done) =
       if (msg.type === MessageType.Subscribe) {
         socket.send(
           JSON.stringify({
-            id: msg.id,
+            id: null,
             type: MessageType.Error,
-            payload: 'malformed',
           }),
         );
         socket.send(
@@ -2212,7 +2213,7 @@ describe('events', () => {
 
     const { url, ...server } = await startTServer();
 
-    const client = createClient({
+    const client = createClient<GraphqlProtocol>({
       url,
       lazy: false,
       retryAttempts: 1,

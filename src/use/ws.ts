@@ -1,7 +1,7 @@
 import type * as http from 'http';
 import type * as ws from 'ws';
 import { handleProtocols, makeServer, ServerOptions } from '../server';
-import { ConnectionInitMessage, CloseCode, Disposable } from '../common';
+import { CloseCode, Disposable, GenericProtocol } from '../common';
 import { limitCloseReason } from '../utils';
 
 // for nicer documentation
@@ -32,7 +32,7 @@ export interface Extra {
  * @category Server/ws
  */
 export function useServer<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
+  P extends GenericProtocol = GenericProtocol,
   E extends Record<PropertyKey, unknown> = Record<PropertyKey, never>,
 >(
   options: ServerOptions<P, Extra & Partial<E>>,

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import http from 'http';
-import { pong, simpleSubscribe } from '../fixtures/simple';
+import { GraphqlProtocol, pong, simpleSubscribe } from '../fixtures/simple';
 import { ServerOptions, Context } from '../../server';
 
 import ws, { WebSocketServer } from 'ws';
@@ -19,6 +19,7 @@ import {
   makeHandler as makeFastifyHandler,
   Extra as FastifyExtra,
 } from '../../use/@fastify/websocket';
+import { GenericProtocol } from '../../common';
 export { WSExtra, UWSExtra, FastifyExtra };
 
 // distinct server for each test; if you forget to dispose, the fixture wont
@@ -137,8 +138,10 @@ export async function startRawServer(): Promise<{
   };
 }
 
-export async function startWSTServer(
-  options: Partial<ServerOptions> = {},
+export async function startWSTServer<
+  Prot extends GenericProtocol = GraphqlProtocol,
+>(
+  options: Partial<ServerOptions<Prot>> = {},
   keepAlive?: number, // for ws tests sake
   v7?: boolean,
 ): Promise<TServer> {
@@ -162,11 +165,14 @@ export async function startWSTServer(
   const pendingConnections: Context<any, WSExtra>[] = [];
   let pendingOperations = 0,
     pendingCompletes = 0;
-  const server = useWSServer(
+  const server = useWSServer<Prot>(
     {
       ...options,
       createSubscription: (props) => {
-        const sub = (options.createSubscription ?? simpleSubscribe)(props);
+        const sub = (
+          options.createSubscription ??
+          (simpleSubscribe as ServerOptions<Prot>['createSubscription'])
+        )(props);
         pendingOperations++;
         emitter.emit('operation');
 
@@ -329,7 +335,7 @@ export async function startWSTServer(
 }
 
 export async function startUWSTServer(
-  options: Partial<ServerOptions> = {},
+  options: Partial<ServerOptions<GraphqlProtocol>> = {},
   keepAlive?: number, // for ws tests sake
 ): Promise<TServer> {
   const path = '/simple';
@@ -348,7 +354,7 @@ export async function startUWSTServer(
         .App()
         .ws(
           path,
-          makeUWSBehavior(
+          makeUWSBehavior<GraphqlProtocol>(
             {
               ...options,
               onConnect: async (...args) => {
@@ -463,7 +469,7 @@ export async function startUWSTServer(
 }
 
 export async function startFastifyWSTServer(
-  options: Partial<ServerOptions> = {},
+  options: Partial<ServerOptions<GraphqlProtocol>> = {},
   keepAlive?: number, // for ws tests sake
 ): Promise<TServer> {
   const path = '/simple';
@@ -504,7 +510,7 @@ export async function startFastifyWSTServer(
         emitter.emit('close');
       });
 
-      makeFastifyHandler(
+      makeFastifyHandler<GraphqlProtocol>(
         {
           ...options,
           onConnect: async (...args) => {
@@ -664,8 +670,10 @@ export const tServers = [
   },
   {
     tServer: 'ws7' as const,
-    startTServer: (options?: Partial<ServerOptions>, keepAlive?: number) =>
-      startWSTServer(options, keepAlive, true),
+    startTServer: (
+      options?: Partial<ServerOptions<GraphqlProtocol>>,
+      keepAlive?: number,
+    ) => startWSTServer(options, keepAlive, true),
     skipWS: it.skip,
     skipUWS: it,
     skipFastify: it,

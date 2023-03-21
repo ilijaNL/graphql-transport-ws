@@ -20,18 +20,12 @@ import {
   PingMessage,
   PongMessage,
   GRAPHQL_TRANSPORT_WS_PROTOCOL,
-  ExecutionResult,
+  GenericProtocol,
+  // ExecutionResult,
 } from './common';
 import { isAsyncGenerator, isObject } from './utils';
 
-/** @category Server */
-export interface Subscription {
-  /**
-   * Resolves when the subscription is done or with an ErrorMessage when subscription has an error when starting
-   */
-  start(
-    emit: (message: ExecutionResult) => Promise<void>,
-  ): Promise<ErrorMessage['payload'] | void>;
+export interface Stoppable {
   /**
    * Stops this subscription
    */
@@ -39,17 +33,24 @@ export interface Subscription {
 }
 
 /** @category Server */
-export interface ServerOptions<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
-  E = unknown,
-> {
+export interface Subscription<ExecutionResult, ErrorPayload> extends Stoppable {
+  /**
+   * Resolves when the subscription is done or with an ErrorMessage when subscription has an error when starting
+   */
+  start(
+    emit: (message: ExecutionResult) => Promise<void>,
+  ): Promise<ErrorPayload | void>;
+}
+
+/** @category Server */
+export interface ServerOptions<Prot extends GenericProtocol, E = unknown> {
   /**
    * Get subscription
    */
   createSubscription: (props: {
-    ctx: Context<P, E>;
-    message: SubscribeMessage;
-  }) => Subscription;
+    ctx: Context<Prot['ConnectionInitPayload'], E>;
+    message: SubscribeMessage<Prot['SubscribePayload']>;
+  }) => Subscription<Prot['ExecutionResult'], Prot['ErrorPayload']>;
   /**
    * The amount of time for which the server will wait
    * for `ConnectionInit` message.
@@ -89,7 +90,7 @@ export interface ServerOptions<
    * in the close event reason.
    */
   onConnect?: (
-    ctx: Context<P, E>,
+    ctx: Context<Prot['ConnectionInitPayload'], E>,
   ) =>
     | Promise<Record<string, unknown> | boolean | void>
     | Record<string, unknown>
@@ -112,7 +113,7 @@ export interface ServerOptions<
    * of the connection state - consider using the `onClose` callback.
    */
   onDisconnect?: (
-    ctx: Context<P, E>,
+    ctx: Context<Prot['ConnectionInitPayload'], E>,
     code: number,
     reason: string,
   ) => Promise<void> | void;
@@ -131,7 +132,7 @@ export interface ServerOptions<
    * called before the `onClose`.
    */
   onClose?: (
-    ctx: Context<P, E>,
+    ctx: Context<Prot['ConnectionInitPayload'], E>,
     code: number,
     reason: string,
   ) => Promise<void> | void;
@@ -146,9 +147,12 @@ export interface ServerOptions<
    * in the close event reason.
    */
   onError?: (
-    ctx: Context<P, E>,
-    message: ErrorMessage,
-  ) => Promise<void | ErrorMessage> | void | ErrorMessage;
+    ctx: Context<Prot['ConnectionInitPayload'], E>,
+    message: ErrorMessage<Prot['ErrorPayload']>,
+  ) =>
+    | Promise<void | ErrorMessage<Prot['ErrorPayload']>>
+    | void
+    | ErrorMessage<Prot['ErrorPayload']>;
   /**
    * Executed after an operation has emitted a result right before
    * that result has been sent to the client. Results from both
@@ -159,9 +163,12 @@ export interface ServerOptions<
    * in the close event reason.
    */
   onNext?: (
-    ctx: Context<P, E>,
-    payload: NextMessage,
-  ) => Promise<void | NextMessage> | void | NextMessage;
+    ctx: Context<Prot['ConnectionInitPayload'], E>,
+    payload: NextMessage<Prot['ExecutionResult']>,
+  ) =>
+    | Promise<void | NextMessage<Prot['ExecutionResult']>>
+    | void
+    | NextMessage<Prot['ExecutionResult']>;
   /**
    * The complete callback is executed after the
    * operation has completed right before sending
@@ -176,7 +183,7 @@ export interface ServerOptions<
    * will still be called.
    */
   onComplete?: (
-    ctx: Context<P, E>,
+    ctx: Context<Prot['ConnectionInitPayload'], E>,
     message: CompleteMessage,
   ) => Promise<void> | void;
   /**
@@ -276,10 +283,7 @@ export interface WebSocket {
 }
 
 /** @category Server */
-export interface Context<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
-  E = unknown,
-> {
+export interface Context<P, E = unknown> {
   /**
    * Indicates that the `ConnectionInit` message
    * has been received by the server. If this is
@@ -305,7 +309,7 @@ export interface Context<
    * a reservation, meaning - the operation resolves to a single result or is still
    * pending/being prepared.
    */
-  readonly subscriptions: Record<ID, Subscription | null>;
+  readonly subscriptions: Record<ID, Stoppable | null>;
   /**
    * An extra field where you can store your own context values
    * to pass between callbacks.
@@ -313,12 +317,9 @@ export interface Context<
   extra: E;
 }
 
-class SubscriptionConnection<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
-  E = unknown,
-> {
-  private readonly subscriptions = new Map<ID, Subscription | null>();
-  private ctx: Context<P, E>;
+class SubscriptionConnection<P extends GenericProtocol, E = unknown> {
+  private readonly subscriptions = new Map<ID, Stoppable | null>();
+  private ctx: Context<P['ConnectionInitPayload'], E>;
   private connectionInitWait: NodeJS.Timeout | null = null;
   private closed = false;
 
@@ -446,7 +447,9 @@ class SubscriptionConnection<
     return this.socket.close(code, reason);
   }
 
-  private async _handleConnectionInit(msg: ConnectionInitMessage) {
+  private async _handleConnectionInit(
+    msg: ConnectionInitMessage<P['ConnectionInitPayload']>,
+  ) {
     if (this.ctx.connectionInitReceived) {
       return this._handleClose(
         CloseCode.TooManyInitialisationRequests,
@@ -489,9 +492,15 @@ class SubscriptionConnection<
 
   private async _send(
     sub_id: string,
-    message: NextMessage | ErrorMessage | CompleteMessage,
+    message:
+      | NextMessage<P['ExecutionResult']>
+      | ErrorMessage<P['ErrorPayload']>
+      | CompleteMessage,
   ) {
-    let msg: NextMessage | ErrorMessage | CompleteMessage = message;
+    let msg:
+      | NextMessage<P['ExecutionResult']>
+      | ErrorMessage<P['ErrorPayload']>
+      | CompleteMessage = message;
     if (message.type === MessageType.Next) {
       const r = await this.serverOptions.onNext?.(this.ctx, message);
       msg = r ?? msg;
@@ -513,7 +522,7 @@ class SubscriptionConnection<
     }
   }
 
-  private async _handleSubscribe(msg: SubscribeMessage) {
+  private async _handleSubscribe(msg: SubscribeMessage<P['SubscribePayload']>) {
     if (!this.ctx.acknowledged) {
       return this._handleClose(CloseCode.Unauthorized, 'Unauthorized');
     }
@@ -536,7 +545,7 @@ class SubscriptionConnection<
 
     this.subscriptions.set(id, sub);
 
-    const error = await sub.start((result: ExecutionResult) =>
+    const error = await sub.start((result: P['ExecutionResult']) =>
       this._send(id, { id: id, payload: result, type: MessageType.Next }),
     );
     // resolved with error, just report and return
@@ -571,10 +580,9 @@ class SubscriptionConnection<
  *
  * @category Server
  */
-export function makeServer<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
-  E = unknown,
->(options: ServerOptions<P, E>): Server<E> {
+export function makeServer<P extends GenericProtocol, E = unknown>(
+  options: ServerOptions<P, E>,
+): Server<E> {
   return {
     opened(socket, extra) {
       if (socket.protocol !== GRAPHQL_TRANSPORT_WS_PROTOCOL) {

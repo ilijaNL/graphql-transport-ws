@@ -70,6 +70,32 @@ export interface Sink<T = unknown> {
 }
 
 /**
+ * Interface for a protocol
+ *
+ * An example of graphql protocol:
+ *
+ * export interface GraphqlProtocol extends GenericProtocol {
+ *    ConnectionInitPayload: Record<string, unknown>;
+ *    SubscribePayload: {
+ *      query: string;
+ *      variables?: Record<string, unknown>;
+ *    };
+ *    ExecutionResult: {
+ *      errors?: ReadonlyArray<{ name: string; message: string }>;
+ *      data?: Record<string, unknown> | null;
+ *    };
+ *    ErrorPayload: ReadonlyArray<{ name: string; message: string }>;
+ * }
+ * @category Common
+ */
+export interface GenericProtocol {
+  ConnectionInitPayload?: unknown;
+  SubscribePayload?: unknown;
+  ErrorPayload?: unknown;
+  ExecutionResult?: unknown;
+}
+
+/**
  * Types of messages allowed to be sent by the client/server over the WS protocol.
  *
  * @category Common
@@ -88,9 +114,9 @@ export enum MessageType {
 }
 
 /** @category Common */
-export interface ConnectionInitMessage {
+export interface ConnectionInitMessage<ConnectionInitPayload> {
   readonly type: MessageType.ConnectionInit;
-  readonly payload?: Record<string, unknown>;
+  readonly payload?: ConnectionInitPayload;
 }
 
 /** @category Common */
@@ -112,41 +138,24 @@ export interface PongMessage {
 }
 
 /** @category Common */
-export interface SubscribeMessage<SubscribePayload = Record<string, unknown>> {
+export interface SubscribeMessage<SubscribePayload> {
   readonly id: ID;
   readonly type: MessageType.Subscribe;
   readonly payload: SubscribePayload;
 }
 
 /** @category Common */
-export interface ErrorPayload {
-  name: string;
-  message: string;
-}
-
-/** @category Common */
-export interface ExecutionResult<
-  Data = Record<string, unknown>,
-  Extensions = Record<string, unknown>,
-  Err extends ErrorPayload = ErrorPayload,
-> {
-  errors?: ReadonlyArray<Err>;
-  data?: Data | null;
-  extensions?: Extensions;
-}
-
-/** @category Common */
-export interface NextMessage {
+export interface NextMessage<ExecutionResult> {
   readonly id: ID;
   readonly type: MessageType.Next;
   readonly payload: ExecutionResult;
 }
 
 /** @category Common */
-export interface ErrorMessage<Err extends ErrorPayload = ErrorPayload> {
+export interface ErrorMessage<ErrorPayload> {
   readonly id: ID;
   readonly type: MessageType.Error;
-  readonly payload: readonly Err[];
+  readonly payload: ErrorPayload;
 }
 
 /** @category Common */
@@ -160,17 +169,17 @@ export type Message<T extends MessageType = MessageType> =
   T extends MessageType.ConnectionAck
     ? ConnectionAckMessage
     : T extends MessageType.ConnectionInit
-    ? ConnectionInitMessage
+    ? ConnectionInitMessage<unknown>
     : T extends MessageType.Ping
     ? PingMessage
     : T extends MessageType.Pong
     ? PongMessage
     : T extends MessageType.Subscribe
-    ? SubscribeMessage
+    ? SubscribeMessage<unknown>
     : T extends MessageType.Next
-    ? NextMessage
+    ? NextMessage<unknown>
     : T extends MessageType.Error
-    ? ErrorMessage
+    ? ErrorMessage<unknown>
     : T extends MessageType.Complete
     ? CompleteMessage
     : never;
@@ -230,13 +239,9 @@ export function validateMessage(val: unknown): Message {
         );
       }
 
-      if (!isObject(val.payload)) {
+      if (val.payload === undefined) {
         throw new Error(
-          `"${
-            val.type
-          }" message expects the 'payload' property to be an object, but got ${extendedTypeof(
-            val.payload,
-          )}`,
+          `"${val.type}" message expects the 'payload' property to be defined, but got undefined`,
         );
       }
 
@@ -259,13 +264,9 @@ export function validateMessage(val: unknown): Message {
         );
       }
 
-      if (!isObject(val.payload)) {
+      if (val.payload === undefined) {
         throw new Error(
-          `"${
-            val.type
-          }" message expects the 'payload' property to be an object, but got ${extendedTypeof(
-            val.payload,
-          )}`,
+          `"${val.type}" message expects the 'payload' property to be defined, but got undefined`,
         );
       }
 
@@ -288,13 +289,9 @@ export function validateMessage(val: unknown): Message {
         );
       }
 
-      if (!areErrors(val.payload)) {
+      if (val.payload === undefined) {
         throw new Error(
-          `"${
-            val.type
-          }" message expects the 'payload' property to be an array of errors, but got ${JSON.stringify(
-            val.payload,
-          )}`,
+          `"${val.type}" message expects the 'payload' property to be defined, but got undefined`,
         );
       }
 
@@ -378,17 +375,6 @@ export function parseMessage(
  * @category Common
  */
 export type JSONMessageReplacer = (this: any, key: string, value: any) => any;
-
-/** @private */
-export function areErrors(obj: unknown): obj is readonly Error[] {
-  return (
-    Array.isArray(obj) &&
-    // must be at least one error
-    obj.length > 0 &&
-    // error has at least a message
-    obj.every((ob) => 'message' in ob)
-  );
-}
 
 /**
  * Stringifies a valid message ready to be sent through the socket.
