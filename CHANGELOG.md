@@ -1,5 +1,11 @@
 # [5.13.0](https://github.com/ilijaNL/graphql-ws/compare/v5.12.0...v5.13.0) (2023-03-16)
 
+## 5.14.1
+
+### Patch Changes
+
+- 6058e71: TS types to specify the subscribe/next/error/init payload types
+
 ## 5.14.0
 
 ### Minor Changes
