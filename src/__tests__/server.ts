@@ -1,4 +1,4 @@
-import { Context, handleProtocols, makeServer } from '../server';
+import { Context, handleProtocols, makeServer, ServerOptions } from '../server';
 import {
   GRAPHQL_TRANSPORT_WS_PROTOCOL,
   CloseCode,
@@ -6,9 +6,15 @@ import {
   parseMessage,
   stringifyMessage,
   ErrorMessage,
-  ExecutionResult,
+  GenericProtocol,
+  SubscribeMessage,
 } from '../common';
-import { GET_VALUE_QUERY, PING_SUB, simpleSubscribe } from './fixtures/simple';
+import {
+  GET_VALUE_QUERY,
+  GraphqlProtocol,
+  PING_SUB,
+  simpleSubscribe,
+} from './fixtures/simple';
 import { createTClient, startWSTServer as startTServer } from './utils';
 
 // silence console.error calls for nicer tests overview
@@ -403,6 +409,63 @@ describe('Ping/Pong', () => {
   });
 });
 
+interface SimpleProtocol extends GenericProtocol {
+  ErrorPayload: string;
+  SubscribePayload: [string, number];
+  ExecutionResult: [number, string];
+}
+
+describe('Simple protocol', () => {
+  it('should subscribe with correct type', async () => {
+    const serverConfig: ServerOptions<SimpleProtocol> = {
+      createSubscription(props) {
+        return {
+          async start(emit) {
+            await emit([props.message.payload[1], props.message.payload[0]]);
+          },
+          stop() {
+            //
+          },
+        };
+      },
+    };
+    const { url } = await startTServer<SimpleProtocol>(serverConfig);
+    const client = await createTClient(url);
+
+    client.ws.send(
+      stringifyMessage<MessageType.ConnectionInit>({
+        type: MessageType.ConnectionInit,
+      }),
+    );
+
+    const msg: SubscribeMessage<SimpleProtocol['SubscribePayload']> = {
+      id: '1',
+      payload: ['123', 1],
+      type: MessageType.Subscribe,
+    };
+
+    await client.waitForMessage(({ data }) => {
+      expect(parseMessage(data).type).toBe(MessageType.ConnectionAck);
+      client.ws.send(stringifyMessage<MessageType.Subscribe>(msg));
+    });
+
+    await client.waitForMessage(({ data }) => {
+      expect(parseMessage(data)).toEqual({
+        id: '1',
+        type: MessageType.Next,
+        payload: [1, '123'],
+      });
+    });
+
+    await client.waitForMessage(({ data }) => {
+      expect(parseMessage(data)).toEqual({
+        id: '1',
+        type: MessageType.Complete,
+      });
+    });
+  });
+});
+
 describe('Subscribe', () => {
   it('should close the socket on request if connection is not acknowledged', async () => {
     const { url } = await startTServer();
@@ -429,7 +492,7 @@ describe('Subscribe', () => {
   });
 
   it('should use the errors returned from `onError`', async () => {
-    const error: ErrorMessage = {
+    const error: ErrorMessage<GraphqlProtocol['ErrorPayload']> = {
       id: '1',
       payload: [
         { name: 't', message: 'Report' },
@@ -536,7 +599,9 @@ describe('Subscribe', () => {
 
         const generator = gen();
 
-        async function run(emit: (msg: ExecutionResult) => Promise<void>) {
+        async function run(
+          emit: (msg: GraphqlProtocol['ExecutionResult']) => Promise<void>,
+        ) {
           for await (const res of generator) {
             emit({ data: res });
           }
@@ -606,7 +671,7 @@ describe('Subscribe', () => {
   });
 
   it('should execute the query and "error"', async () => {
-    const error: ErrorMessage['payload'] = [
+    const error: GraphqlProtocol['ErrorPayload'] = [
       { name: 't', message: 'Report' },
       { name: 't', message: 'Me' },
     ];
@@ -614,7 +679,9 @@ describe('Subscribe', () => {
       createSubscription() {
         return {
           start: () =>
-            new Promise((resolve) => setTimeout(() => resolve(error), 10)),
+            new Promise<GraphqlProtocol['ErrorPayload']>((resolve) =>
+              setTimeout(() => resolve(error), 10),
+            ),
           stop() {
             //
           },
@@ -645,7 +712,10 @@ describe('Subscribe', () => {
     });
 
     await client.waitForMessage(({ data }) => {
-      expect((parseMessage(data) as ErrorMessage).payload).toEqual(error);
+      expect(
+        (parseMessage(data) as ErrorMessage<GraphqlProtocol['ErrorPayload']>)
+          .payload,
+      ).toEqual(error);
     });
 
     await client.waitForClose(() => {
@@ -993,7 +1063,7 @@ describe('Subscribe', () => {
   });
 
   it('should clean up subscription reservations on abrupt errors without relying on close', async (done) => {
-    let currCtx: Context;
+    let currCtx: Context<GraphqlProtocol['ConnectionInitPayload']>;
     makeServer({
       connectionInitWaitTimeout: 0, // defaults to 3 seconds
       createSubscription: ({ ctx }) => {

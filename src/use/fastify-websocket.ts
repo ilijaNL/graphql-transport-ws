@@ -2,7 +2,7 @@ import type { FastifyRequest } from 'fastify';
 import type * as fastifyWebsocket from 'fastify-websocket';
 import { makeHandler as makeHandlerCurrent } from './@fastify/websocket';
 import { ServerOptions } from '../server';
-import { ConnectionInitMessage } from '../common';
+import { GenericProtocol } from '../common';
 
 /**
  * The extra that will be put in the `Context`.
@@ -33,7 +33,7 @@ export interface Extra {
  * @category Server/fastify-websocket
  */
 export function makeHandler<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
+  P extends GenericProtocol = GenericProtocol,
   E extends Record<PropertyKey, unknown> = Record<PropertyKey, never>,
 >(
   options: ServerOptions<P, Extra & Partial<E>>,

@@ -12,7 +12,6 @@ import {
   Disposable,
   Message,
   MessageType,
-  ConnectionInitMessage,
   ConnectionAckMessage,
   PingMessage,
   PongMessage,
@@ -20,8 +19,8 @@ import {
   stringifyMessage,
   JSONMessageReviver,
   JSONMessageReplacer,
-  ExecutionResult,
   SubscribeMessage,
+  GenericProtocol,
 } from './common';
 import { isObject, limitCloseReason } from './utils';
 
@@ -197,10 +196,7 @@ export type EventListener<E extends Event> = E extends EventConnecting
  *
  * @category Client
  */
-export interface ClientOptions<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
-  SubscribePayload = Record<string, unknown>,
-> {
+export interface ClientOptions<P extends GenericProtocol> {
   /**
    * URL of the GraphQL over WebSocket Protocol compliant server to connect.
    *
@@ -224,7 +220,9 @@ export interface ClientOptions<
    * Throwing an error from within this function will close the socket with the `Error` message
    * in the close event reason.
    */
-  connectionParams?: P | (() => Promise<P> | P);
+  connectionParams?:
+    | P['ConnectionInitPayload']
+    | (() => Promise<P['ConnectionInitPayload']> | P['ConnectionInitPayload']);
   /**
    * Controls when should the connection be established.
    *
@@ -411,7 +409,7 @@ export interface ClientOptions<
    *
    * Reference: https://gist.github.com/jed/982883
    */
-  generateID?: (payload: SubscribePayload) => ID;
+  generateID?: (payload: P['SubscribePayload']) => ID;
   /**
    * An optional override for the JSON.parse function used to hydrate
    * incoming messages to this client. Useful for parsing custom datatypes
@@ -427,7 +425,7 @@ export interface ClientOptions<
 }
 
 /** @category Client */
-export interface Client<SubscribePayload = Record<string, unknown>>
+export interface Client<Prot extends GenericProtocol = GenericProtocol>
   extends Disposable {
   /**
    * Listens on the client which dispatches events about the socket state.
@@ -438,13 +436,9 @@ export interface Client<SubscribePayload = Record<string, unknown>>
    * uses the `sink` to emit received data or errors. Returns a _cleanup_
    * function used for dropping the subscription and cleaning stuff up.
    */
-  subscribe<
-    Data = Record<string, unknown>,
-    Extensions = unknown,
-    Err extends Error = Error,
-  >(
-    payload: SubscribePayload,
-    sink: Sink<ExecutionResult<Data, Extensions, Err>>,
+  subscribe<Result extends Prot['ExecutionResult'] = Prot['ExecutionResult']>(
+    payload: Prot['SubscribePayload'],
+    sink: Sink<Result>,
   ): () => void;
   /**
    * Terminates the WebSocket abruptly and immediately.
@@ -474,10 +468,9 @@ function generateUUID() {
  *
  * @category Client
  */
-export function createClient<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
-  SubscribePayload = Record<string, unknown>,
->(options: ClientOptions<P, SubscribePayload>): Client<SubscribePayload> {
+export function createClient<Prot extends GenericProtocol = GenericProtocol>(
+  options: ClientOptions<Prot>,
+): Client<Prot> {
   const {
     url,
     connectionParams,
@@ -678,7 +671,9 @@ export function createClient<
               emitter.emit('opened', socket);
               const payload =
                 typeof connectionParams === 'function'
-                  ? await connectionParams()
+                  ? await (
+                      connectionParams as () => Prot['ConnectionInitPayload']
+                    )()
                   : connectionParams;
 
               // connectionParams might take too long causing the server to kick off the client
@@ -928,7 +923,7 @@ export function createClient<
               }
             });
 
-            const subMessage: SubscribeMessage<SubscribePayload> = {
+            const subMessage: SubscribeMessage<Prot['SubscribePayload']> = {
               id,
               type: MessageType.Subscribe,
               payload,
@@ -937,7 +932,7 @@ export function createClient<
             socket.send(
               stringifyMessage<MessageType.Subscribe>(
                 // need to cast to make typescript happy
-                subMessage as SubscribeMessage,
+                subMessage as SubscribeMessage<Prot['SubscribePayload']>,
                 replacer,
               ),
             );

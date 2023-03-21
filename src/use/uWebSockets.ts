@@ -1,7 +1,7 @@
 import type * as uWS from 'uWebSockets.js';
 import type http from 'http';
 import { handleProtocols, makeServer, ServerOptions } from '../server';
-import { ConnectionInitMessage, CloseCode } from '../common';
+import { CloseCode, GenericProtocol } from '../common';
 import { limitCloseReason } from '../utils';
 
 /**
@@ -68,7 +68,7 @@ interface Client {
  * @category Server/uWebSockets
  */
 export function makeBehavior<
-  P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
+  P extends GenericProtocol = GenericProtocol,
   E extends Record<PropertyKey, unknown> = Record<PropertyKey, never>,
 >(
   options: ServerOptions<P, Extra & Partial<E>>,
